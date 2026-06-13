@@ -33,6 +33,7 @@ void registerCustomer() {
   c.balance = 0.0;
 
   cin.ignore(numeric_limits<streamsize>::max(), '\n');
+  
   cout << " Full Name :";
   getline(cin, c.name);
 
@@ -102,11 +103,11 @@ int main(){
 
     switch(choice){
       case 1:
-          registerCustomer();
-          break;
+        registerCustomer();
+        break;
       case 2:
-          listCustomers();
-          break;
+        listCustomers();
+        break;
       case 3:
           cout <<"\n Record Water Customer\n";
           break;
