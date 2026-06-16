@@ -3,6 +3,8 @@
 #include <vector>
 #include <iomanip>
 #include <limits>
+#include <algorithm>
+#include <cctype>
 
 using namespace std;
 
@@ -11,7 +13,6 @@ const double SERVICE_CHARGE = 200.0;
 const double TIER1_LIMIT = 6.0;
 const double TIER2_LIMIT = 20.0;
 const double TIER3_LIMIT = 50.0;
-//rates
 const double TIER1_RATE = 50.0;
 const double TIER2_RATE = 75.0;
 const double TIER3_RATE = 100.0;
@@ -85,6 +86,16 @@ Customer* findCustomerById(int id) {
   }
   return nullptr;
 }
+
+// helps to search even when the user types in small letters
+string toLowerStr(const string& s){
+  string result = s;
+  transform(result.begin(), result.end(), result.begin(), ::tolower); return result;
+}
+void printSeparator(int width = 60, char ch = '='){
+  cout <<" " << string(width, ch) <<"\n";
+}
+
 //biiling engine
 void calculateTieredCost(double units, Bill& bill){
   bill.tier1Units = 0;
@@ -127,6 +138,223 @@ void calculateTieredCost(double units, Bill& bill){
   //total
   bill.totalAmount = bill.tier1Cost + bill.tier2Cost + bill.tier3Cost + bill.tier4Cost + bill.serviceCharge;
 
+}
+
+//search customers by name
+void searchCustomerByName(){
+  cout <<"\n Search Customer by Name \n";
+  string query;
+  cin.ignore(numeric_limits<streamsize>::max(), '\n');
+  cout <<" Enter name to search: ";
+  getline(cin, query);
+  string lowerQuery = toLowerStr(query);
+  bool found = false;
+  cout << "\n "<< left << setw(5) <<"ID" <<setw(22)<<"Name"
+       << setw(13) <<"Meter" << setw(15) <<"Phone" << setw(14) <<"Balance(KES)"<<"\n";
+  printSeparator(69, '-');
+  
+  for (const auto& c : customers){
+    if(toLowerStr(c.name).find(lowerQuery) != string::npos){
+      cout <<" "<< left << setw(5) << c.id << setw(22) << c.name
+          << setw(13) << c.meterNumber << setw(15) << c.phone << fixed << setprecision(2) << c.balance <<"\n";
+      found = true;    
+    }
+  }
+  
+  if (!found)
+    cout << " No customer found matching \"" << query << "\".\n";
+  cout <<"\n";
+}
+//sytemDashboard
+void systemDashboard(){
+  cout <<"\n";
+  printSeparator(60, '=');
+  cout <<" SYSTEM DASHBOARD \n";
+  printSeparator(60, '=');
+  
+  if (customers.empty()) {
+    cout <<" No data yet. Register some customers first.\n"; return;
+  }
+  //counters to accumulate
+  int totalCustomers = customers.size();
+  int totalBills = 0;
+  int totalPaidBills = 0;
+  int totalUnpaidBills = 0;
+  int totalPayments = 0;
+  int totalReadings = 0;
+  double totalUnitUsed = 0.0;
+  double totalBilled = 0.0;
+  double totalCollected = 0.0;
+  double totalOutstanding = 0.0;
+  double totalCredit = 0.0;
+
+  //walks every customer and their data
+  for (const auto& c : customers){
+    //USAGE
+    totalReadings += c.records.size();
+    for (const auto& r: c.records)
+        totalUnitUsed += r.unitsUsed;
+    //BILLS  
+    totalBills += c.records.size();
+    for (const auto& b : c.bills)  {
+      totalBilled += b.totalAmount;
+      totalCollected += b.amountPaid;
+      if (b.paid) totalPaidBills++;
+      else totalUnpaidBills++;
+    }
+    //PAYMENTS
+    totalPayments += c.payments.size();
+    if (c.balance > 0) totalOutstanding += c.balance;
+    else if (c.balance < 0) totalCredit += abs(c.balance);
+  }
+  //print dashboard
+  cout << fixed <<setprecision(2);
+
+  cout <<"\n CUSTOMERS \n";
+  printSeparator(60, '-');
+  cout << " Total Registered : "<< totalCustomers <<"\n";
+
+  cout <<"\n WATER USAGE \n";
+  printSeparator(60, '-');
+  cout <<" Total Readings : "<< totalReadings <<"\n";
+  cout <<" Total Units Used : "<< totalUnitUsed <<" m³\n";
+
+  cout <<"\n BILLING \n";
+  printSeparator(60, '-');
+  cout <<" Bills Generated : "<< totalBills<<"\n";
+  cout <<" Bills Paid : "<< totalPaidBills <<"\n";
+  cout <<" Bills Unpaid : "<< totalUnpaidBills <<"\n";
+  cout <<" Total Billed : "<< totalBilled <<"\n";
+
+  cout <<"\n PAYMENTS \n";
+  printSeparator(60, '-');
+  cout <<" Total Transations : "<< totalPayments<<"\n";
+  cout <<" Total Collected(KES) : "<< totalCollected <<"\n";
+  cout <<" Outstanding(KES): "<< totalOutstanding <<"\n";
+  cout <<" Credit on Accs(KES): "<< totalCredit <<"\n";
+
+  //collection rate: how much of what was billed has been paid
+  if (totalBilled > 0){
+    double rate = (totalCollected / totalBilled) * 100.0;
+    cout <<"\n Collection Rate : " << rate << "%\n";
+  }
+  printSeparator(60, '='); 
+  cout <<"\n";
+}
+
+//accountstatement
+void accountStatement(){
+  cout <<"\n Account Statement \n";
+  if (customers.empty()) {cout << " No customers yet.\n"; return; }
+
+  int id;
+  cout <<"Enter Customer ID: ";
+  cin >>id;
+  Customer* c = findCustomerById(id);
+  if (!c){cout <<"Not found.\n"; return;}
+
+  cout << fixed << setprecision(2);
+  cout <<"\n";
+  printSeparator(64, '=');
+  cout << "ACCOUNT STATEMENT \n";
+  printSeparator(64, '=');
+
+  //customer info
+  cout <<" Name : "<< c->name <<"\n";
+  cout <<" Customer : "<< c->id <<"\n";
+  cout <<" Meter Number : "<< c->meterNumber <<"\n";
+  cout <<" Phone : "<< c->phone <<"\n";
+  cout <<" Last Reading : "<< c->lastReading <<"\n";
+  cout <<" Balance : "<< c->balance << (c->balance < 0 ? "(CREDIT)" : (c->balance == 0 ? "(CLEAR)" : "(OWING)")) << "\n";
+
+  //usage records
+  cout  <<"\n";
+  printSeparator(64, '-');
+  cout << " WATER USAGE RECORDS ("<< c->records.size() <<"total)\n";
+  printSeparator(64, '-');
+
+  if (c->records.empty()) {
+    cout <<" No usage records.\n";
+  }else {
+    cout <<" "<< left << setw(5) <<"#" << setw(14) << "Date"
+         << setw(12) << "Prev(m³)" << setw(12) << "Curr(m³)"
+         << setw(12) << "Used(m³)" << setw(8) << "Billed" <<"\n";
+    double totalUsed = 0;
+    for (const auto& r : c->records){
+      cout <<" " << left << setw(5) << r.recordId
+           << setw (14) << r.date
+           << setw (12) << r.previousReading
+           << setw (12) << r.currentReading
+           << setw (12) << r.unitsUsed
+           << (r.billed ? "Yes" : "No") << "\n";
+      totalUsed += r.unitsUsed;     
+    } 
+    cout <<" " << string(63, '-') <<"\n";
+    cout <<"Total Usage: " << totalUsed << "m³\n";    
+  }
+  // bills
+  cout <<"\n";
+  printSeparator(64, '-');
+  cout <<" BILLS ("<< c->bills.size()<<" total)\n";
+  printSeparator(64, '-');
+
+  if (c->bills.empty()) {
+    cout <<" No bills generated.\n";
+  }else{
+    cout <<" "<< left << setw(8) <<"Bill #" << setw(14) <<"Issued"
+         << setw(14) << "Due" << setw(10) << "Units" << setw(12) <<"Total(KES)" 
+         << setw(12) << "Paid(KES)" << setw(8) <<"Status" <<"\n";
+    double totalBilled = 0, totalPaid = 0;
+    for (const auto& b : c->bills) {
+      cout <<" " << left << setw(8) << b.billId
+           << setw(14) << b.issueDate << setw(14) << b.dueDate
+           << setw(10) << b.totalUnits
+           << setw(12) << b.totalAmount
+           << setw(12) << b.amountPaid
+           <<(b.paid ? "PAID" : "UNPAID") <<"\n";
+      totalBilled += b.totalAmount;
+      totalPaid += b.amountPaid;     
+    } 
+    cout <<" " << string(63, '-') << "\n";
+    cout <<" Total Billed : KES" << totalBilled <<"\n";
+    cout <<" Total Paid : KES" << totalPaid <<"\n";   
+  }
+  //payments
+  cout <<"\n";
+  printSeparator(64, '-');
+  cout <<" PAYMENTS(" << c->payments.size() <<"total)\n";
+  printSeparator(64, '-');
+  
+  if (c->payments.empty()) {
+    cout <<" No payments made.\n";
+  }else{
+    cout <<" " << left << setw(6) <<"Pay #"<< setw(8) <<"Bill #"
+         << setw(14) << "Date" << setw(14) <<"Method"
+         << setw(12) << "Amount" << setw(14) <<"Bal After" <<"\n";
+    double totalPaid = 0;
+    for (const auto& p : c->payments) {
+      cout << " " << left << setw(6) << p.paymentId
+           << setw(8) << p.billId
+           << setw(14) << p.date
+           << setw(14) << p.method
+           << setw(12) <<p.amountPaid
+           << p.balanceAfter <<"\n";
+      totalPaid += p.amountPaid;     
+    }
+    cout <<" " << string(63, '=') <<"\n";
+    cout << " Total Paid: KES "<< totalPaid <<"\n";       
+  }
+  //summary
+  cout <<"\n";
+  printSeparator(64, '=');
+  cout <<" ACCOUNT SUMMARY\n";
+  printSeparator(64, '-');
+  cout << "Current Balance : KES" << c->balance;
+  if (c->balance < 0) cout << "You have credit!\n";
+  else if (c->balance == 0) cout <<"Account clear.\n";
+  else cout << "Amount Owing.\n";
+  printSeparator(64, '=');
+  cout <<"\n";
 }
 //payments
 void makePayment(){
@@ -190,7 +418,7 @@ void makePayment(){
 
   if (amount <= 0){
     cout <<" Payment amount must be greator than zero.\n"; return;}
-    
+
   cout <<"\n Payment Method\n";
   cout <<" 1.Cash\n";
   cout <<" 2.M-pesa\n";
@@ -609,14 +837,25 @@ void displayMenu(){
   cout <<"\n";
   cout <<"SMART WATER METER & PAYMENT SYSTEM \n";
   cout <<"\n";
+  cout <<" CUSTOMERS\n";
   cout <<" 1. Register New Customer\n";
   cout <<" 2. List All Customers\n";
-  cout <<" 3. Record Water Usage\n";
-  cout <<" 4. View Usage History\n";
-  cout <<" 5. Generate Bill\n";
-  cout <<" 6. View Bill\n";
-  cout <<" 7. Make Payment\n";
-  cout <<" 8. View Payment History\n";
+  cout <<" 3. Search Customer By Name\n";
+  cout <<"\n";
+  cout <<" USAGE & BILLING \n";
+  cout <<" 4. Record Water Usage\n";
+  cout <<" 5. View Usage History\n";
+  cout <<" 6. Generate Bill\n";
+  cout <<" 7. View Bill\n";
+  cout <<"\n";
+  cout <<" PAYMENTS\n";
+  cout <<" 8. Make Payment\n";
+  cout <<" 9. View Payment History\n";
+  cout <<"\n";
+  cout <<" REPORTS\n";
+  cout <<" 10. Account Statement\n";
+  cout <<" 11. System Dashboard\n";
+  cout <<"\n";
   cout <<" 0. Exit\n";
   cout <<"\n";
   cout <<" Enter your choice: ";
@@ -630,14 +869,17 @@ int main(){
     switch(choice){
       case 1: registerCustomer(); break;
       case 2: listCustomers(); break;
-      case 3: recordUsage(); break;
-      case 4: viewUsageHistory(); break; 
-      case 5: generateBill(); break;   
-      case 6: viewBills(); break;   
-      case 7: makePayment(); break; 
-      case 8: viewPaymentHistory(); break;  
-      case 0:cout <<"\n Thankyou for visiting! Existing system\n"; break;
-      default:cout <<"\n Invalid Choice. Please select from Menu\n"; break;               
+      case 3: searchCustomerByName(); break;
+      case 4: recordUsage(); break;
+      case 5: viewUsageHistory(); break; 
+      case 6: generateBill(); break;   
+      case 7: viewBills(); break;   
+      case 8: makePayment(); break; 
+      case 9: viewPaymentHistory(); break; 
+      case 10: accountStatement(); break;
+      case 11: systemDashboard(); break; 
+      case 0:cout <<"\n Goodbye!\n\n"; break;
+      default:cout <<"\n Invalid Choice. Enter 0-11\n"; break;               
     }
   } while (choice != 0);
   return 0;
