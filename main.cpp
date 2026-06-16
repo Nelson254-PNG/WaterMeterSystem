@@ -632,20 +632,11 @@ int main(){
       case 3: recordUsage(); break;
       case 4: viewUsageHistory(); break; 
       case 5: generateBill(); break;   
-      case 6: viewBills(); break;
-          
-      case 7:
-          cout <<"\n Make Payment\n";
-          break; 
-      case 8:
-          cout <<"\n View History\n";
-          break;  
-      case 0:
-          cout <<"\n Thankyou for visiting! Existing system\n";
-          break;
-      default:
-          cout <<"\n Invalid Choice. Please select from Menu\n";
-          break;               
+      case 6: viewBills(); break;   
+      case 7: makePayment(); break; 
+      case 8: viewPaymentHistory(); break;  
+      case 0:cout <<"\n Thankyou for visiting! Existing system\n"; break;
+      default:cout <<"\n Invalid Choice. Please select from Menu\n"; break;               
     }
   } while (choice != 0);
   return 0;
