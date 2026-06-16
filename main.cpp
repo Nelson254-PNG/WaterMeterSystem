@@ -188,8 +188,9 @@ void makePayment(){
   cout <<"Amount to  pay(KES) : ";
   cin >>amount;
 
-  if (amount <=0){
+  if (amount <= 0){
     cout <<" Payment amount must be greator than zero.\n"; return;}
+    
   cout <<"\n Payment Method\n";
   cout <<" 1.Cash\n";
   cout <<" 2.M-pesa\n";
