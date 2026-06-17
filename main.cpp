@@ -24,11 +24,12 @@ void displayMenu(){
   cout <<"\n";
   cout <<" PAYMENTS\n";
   cout <<" 8. Make Payment\n";
-  cout <<" 9. View Payment History\n";
+  cout <<" 9. Pay via M-Pesa Paybill\n";
+  cout <<" 10.View Payment History\n";
   cout <<"\n";
   cout <<" REPORTS\n";
-  cout <<" 10. Account Statement\n";
-  cout <<" 11. System Dashboard\n";
+  cout <<" 11. Account Statement\n";
+  cout <<" 12. System Dashboard\n";
   cout <<"\n";
   cout <<" 0. Exit\n";
   cout <<"\n";
@@ -49,9 +50,10 @@ int main(){
       case 6: generateBill(); break;   
       case 7: viewBills(); break;   
       case 8: makePayment(); break; 
-      case 9: viewPaymentHistory(); break; 
-      case 10: accountStatement(); break;
-      case 11: systemDashboard(); break; 
+      case 9: payByMpesaPaybill(); break;
+      case 10: viewPaymentHistory(); break; 
+      case 11: accountStatement(); break;
+      case 12: systemDashboard(); break; 
       case 0:cout <<"\n Goodbye!\n\n"; break;
       default:cout <<"\n Invalid Choice. Enter 0-11\n"; break;               
     }
