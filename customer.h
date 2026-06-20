@@ -1,11 +1,11 @@
 #pragma once
 #include <string>
 
-#include "models.h"
+using namespace std;
 
 string generateMeterNumber(int id);
 
-Customer* findCustomerById(int id);
+bool customerExists(const string& customerId);
 
 string toLowerStr(const string& s);
 
