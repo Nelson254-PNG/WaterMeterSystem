@@ -1,315 +1,386 @@
+// ============================================================
+//  payment.cpp  (DATABASE VERSION)
+//  Processing payments — both generic (Cash/Bank) and the
+//  M-Pesa Paybill manual reconciliation flow.
+// ============================================================
+
 #include "payment.h"
-#include "global.h"
-#include "customer.h"
+#include "db.h"
 #include "constants.h"
 #include <iostream>
 #include <iomanip>
+#include <cctype>
 using namespace std;
 
-//payments
-void makePayment(){
-  cout <<"\n Make Payment \n";
-  
-  if (customers.empty()) { cout <<"No customers registered yet.\n"; return;}
-  int id;
-  cout <<"Enter Customer ID: ";
-  cin >>id;
-  Customer* c = findCustomerById(id);
-  if (!c) { cout <<"Customer not found.\n"; return; }
-  cout <<"\n Customer: "<< c->name <<"\n";
-  cout <<" Meter No. : "<< c->meterNumber <<"\n";
-  cout <<" Balance: KES"<< fixed <<setprecision(2)<< c->balance <<"\n";
-
-  cout <<"\n Unpaid Bills: \n";
-  cout <<" "<< left << setw(8) <<"Bill #"
-       << setw(14) << "Issued" << setw(14) <<"Due"
-       << setw(14) << "Total(KES)" << setw(14)<<"Paid(KES)"
-       << setw (14) << "Remaining(KES)" <<"\n";
-  cout <<" " << string(78, '-') <<"\n";  
-  
-  bool hasUnpaid = false;
-  for (const auto& b : c->bills){
-    if (!b.paid){
-      double remaining = b.totalAmount - b.amountPaid;
-      cout <<" "<< left << setw(8) <<b.billId
-           << setw(14) << b.issueDate
-           << setw(14) << b.dueDate
-           << setw(14) << fixed << setprecision(2) <<b.totalAmount
-           << setw(14) << b.amountPaid
-           << setw(14) << remaining <<"\n";
-      hasUnpaid = true;     
+// ============================================================
+//  FUNCTION: isValidMpesaCode  (UNCHANGED)
+//  Pure string validation — no database involved, so this
+//  function is identical to your CLI version.
+// ============================================================
+bool isValidMpesaCode(const string& code) {
+    if (code.length() != 10) return false;
+    for (char ch : code) {
+        if (!isupper(ch) && !isdigit(ch)) return false;
     }
-  }
-  
-  if (!hasUnpaid) {
-    cout << "No unpaid Bills. Account is clear!\n"; return;
-
-  }
-
-  int billId;
-  cout <<"\n Enter Bill # to pay: ";
-  cin >> billId;
-
-  Bill* targetBill = nullptr;
-  for(auto& b : c->bills){
-    if (b.billId == billId && !b.paid){
-      targetBill = &b; break;
-    }
-  }
-  if (!targetBill){
-    cout << " Bill not found or already paid \n"; return;
-  }
-  double remaining = targetBill->totalAmount - targetBill->amountPaid;
-  cout <<"\n Amount Remaining on Bill #" << billId << ": KES" <<fixed <<setprecision(2) << remaining <<"\n";
-
-  double amount;
-  cout <<"Amount to  pay(KES) : ";
-  cin >>amount;
-
-  if (amount <= 0){
-    cout <<" Payment amount must be greator than zero.\n"; return;}
-
-  cout <<"\n Payment Method\n";
-  cout <<" 1.Cash\n";
-  cout <<" 2.M-pesa\n";
-  cout <<" 3.Bank Transfer\n";
-  cout <<" Choose: ";
-  int methodChoice;
-  cin >> methodChoice;
-
-  string method;
-  switch (methodChoice){
-    case 1: method = "Cash"; break;
-    case 2: method = "M-pesa"; break;
-    case 3: method = "Bank Transfer"; break;
-    default: method = "Other"; break;
-  }
-  //get reference number
-  string reference;
-  cin.ignore(numeric_limits<streamsize>::max(), '\n');
-  if (method != "Cash"){
-    cout <<" Transaction Reference: ";
-    getline(cin, reference);
-  }else {
-    reference = "N/A";
-  }
-
-  string payDate;
-  cout <<"Payments Date (YYYY-MM-DD): ";
-  getline(cin, payDate);
-
-  Payment p;
-  p.paymentId = c->payments.size() + 1;
-  p.billId = billId;
-  p.date = payDate;
-  p.method = method;
-  p.reference = reference;
-  p.amountPaid = amount;
-  p.balanceBefore = c->balance;
-
-  targetBill->amountPaid += amount;
-
-  if (targetBill->amountPaid >= targetBill->totalAmount - 0.01){
-    targetBill->paid = true;
-  }
-  c->balance -= amount;
-  p.balanceAfter = c->balance;
-  c->payments.push_back(p);
-
-  // print receipt
-  cout <<"\n";
-  cout <<" PAYMENT RECEIPT \n";
-  cout <<" Customer : "<< left <<setw(26) <<c->name <<"\n";
-  cout <<" Meter No : "<< left <<setw(26) <<c->meterNumber <<"\n";
-  cout <<" Payment # : "<< left <<setw(26) <<p.paymentId <<"\n";
-  cout <<" Date : "<< left <<setw(26) <<payDate <<"\n";
-  cout <<" Method : "<< left <<setw(26) <<method <<"\n";
-  cout <<" Reference : "<< left <<setw(26) <<reference <<"\n";
-  cout <<"\n";
-  cout <<" Amount Paid : KES " << setw(16) << fixed <<setprecision(2) <<amount <<"\n";
-  cout <<" Balance Before : KES " << setw(16) <<p.balanceBefore <<"\n";
-  cout <<" Balance After : KES " << setw(16) <<p.balanceAfter <<"\n";
-  cout <<"\n";
-
-  if (targetBill->paid) {
-    cout <<" Bill #" << billId << " is now FULLY PAID! \n";
-  }else{
-    double stillOwed = targetBill->totalAmount - targetBill->amountPaid;
-    cout << " Still owed on biil: KES "<< setw(13) << stillOwed <<"\n";
-  }
-  if (c->balance < 0){
-    cout <<" Credit o n account: KES "<< setw(11)<<abs(c->balance) <<"\n";
-  }
-  cout <<"\n"; 
+    return true;
 }
-void viewPaymentHistory(){
-  cout <<"\n Payment History \n";
-  if (customers.empty()) {
-    cout <<" No customers yet.\n"; return;
-  }
-  int id;
-  cout <<" Enter Customer ID: ";
-  cin >> id;
-  Customer* c = findCustomerById(id);
-  if (!c){cout << "Not found.\n"; return;}
-  cout <<"\n Customer : "<< c->name <<"\n";
-  cout <<" Meter No. : "<< c->meterNumber <<"\n";
-  cout <<" Balance : KES "<< fixed << setprecision(2) <<c->balance <<"\n";
-  
-  if (c->payments.empty()){
-    cout <<" No payment made yet.\n"; return;}
-  cout <<"\n" << left
-       << setw(6) << "Pay #"
-       << setw(8) <<"Bill #"
-       << setw(14) <<"Date"
-       << setw(16) <<"Method"
-       << setw(18) <<"Reference"
-       << setw(12) <<"Amount(KES)"
-       << setw(14) <<"Bal After(KES)"
-       <<"\n";
-  cout <<" " <<string(88, '-') << "\n";
-  
-  double totalPaid = 0;
-  for (const auto& p : c->payments){
-    cout <<" " << left
-         << setw(6) << p.paymentId
-         << setw(8) <<p.billId
-         << setw(14) <<p.date
-         << setw(16) <<p.method
-         << setw(18) <<p.reference
-         << setw(12) << fixed << setprecision(2) << p.amountPaid
-         << setw(14) <<p.balanceAfter
-         <<"\n";
-    totalPaid += p.amountPaid;     
-  }
 
-  cout <<" " << string(88, '-') <<"\n";
-  cout <<" Total Paid to Date: KES" << fixed << setprecision(2) << totalPaid <<"\n\n";
+// ============================================================
+//  HELPER: applyPaymentToBill
+//
+//  Shared logic used by BOTH makePayment() and payByMpesaPaybill().
+//  Rather than duplicating these database statements in two
+//  places, we centralize them here.
+//
+//  Takes an OPEN transaction (txn) so the caller controls
+//  when to commit — this lets each calling function decide
+//  its own error handling and messaging around the same core
+//  database operations.
+// ============================================================
+void applyPaymentToBill(pqxx::work& txn, const string& billId,
+                         const string& customerId, double amount) {
+    // Update the bill: add to amount_paid, and flip paid=true
+    // if the new total meets or exceeds the bill's total_amount.
+    // We do this comparison INSIDE SQL using a CASE expression,
+    // so Postgres makes the decision using its own fresh data —
+    // no risk of working with a stale value we read earlier.
+    txn.exec(
+        "UPDATE bills SET "
+        "  amount_paid = amount_paid + $1, "
+        "  paid = (amount_paid + $1 >= total_amount - 0.01) "
+        "WHERE id = $2",
+        pqxx::params{amount, billId}
+    );
 
+    // Update the customer's balance
+    txn.exec(
+        "UPDATE customers SET balance = balance - $1 WHERE id = $2",
+        pqxx::params{amount, customerId}
+    );
 }
-// function of a validmpesacode
 
-bool isValidMpesaCode(const string& code){
-  if(code.length() != 10){ return false;}
-  
-  for (char ch : code){
-    if(!isupper(ch) && !isdigit(ch)){return false;}
-  }
-  return true;
+// ============================================================
+//  FUNCTION: makePaymentLogic   (THE WORKER)
+//
+//  Pure database logic for a generic payment. Looks up the
+//  customer's current balance itself (rather than trusting a
+//  value the caller might have read earlier and gone stale),
+//  inserts the payment record, then applies it to the bill.
+// ============================================================
+void makePaymentLogic(const string& customerId, const string& billId,
+                      const string& method, const string& reference,
+                      double amount, const string& payDate) {
+    if (amount <= 0) {
+        throw runtime_error("Amount must be greater than zero");
+    }
+
+    pqxx::work txn(getConnection());
+
+    pqxx::result custResult = txn.exec(
+        "SELECT balance FROM customers WHERE id = $1",
+        pqxx::params{customerId}
+    );
+    if (custResult.empty()) {
+        throw runtime_error("Customer not found");
+    }
+    double balanceBefore = custResult[0]["balance"].as<double>();
+
+    // Confirm the bill exists, belongs to this customer, and is unpaid
+    pqxx::result billCheck = txn.exec(
+        "SELECT id FROM bills WHERE id = $1 AND customer_id = $2 AND paid = false",
+        pqxx::params{billId, customerId}
+    );
+    if (billCheck.empty()) {
+        throw runtime_error("Bill not found, already paid, or doesn't belong to this customer");
+    }
+
+    txn.exec(
+        "INSERT INTO payments "
+        "(customer_id, bill_id, payment_date, method, reference, "
+        " amount_paid, balance_before, balance_after) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $7 - $6)",
+        pqxx::params{customerId, billId, payDate, method, reference, amount, balanceBefore}
+    );
+
+    applyPaymentToBill(txn, billId, customerId, amount);
+
+    txn.commit();
 }
-// verify if the code has been used
-bool isCodeAlreadyUsed(const string& code){
-  for (const auto& c : customers){
-    for (const auto& p : c.payments){
-      if (p.method == "M-pesa" && p.reference == code){ return true;}
+
+// ============================================================
+//  FUNCTION: makePayment   (THE CLI WRAPPER)
+// ============================================================
+void makePayment() {
+    cout << "\n--- Make Payment ---\n";
+
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
+
+    try {
+        // Show unpaid bills first — this part stays interactive,
+        // since it's purely a CLI convenience, not core logic.
+        pqxx::work txn(getConnection());
+        pqxx::result custResult = txn.exec(
+            "SELECT name, balance FROM customers WHERE id = $1",
+            pqxx::params{customerId}
+        );
+        if (custResult.empty()) { cout << "  ✘ Customer not found.\n"; return; }
+
+        cout << "\n  " << custResult[0]["name"].as<string>()
+             << "  |  Balance: KES "
+             << fixed << setprecision(2) << custResult[0]["balance"].as<double>()
+             << "\n\n  Unpaid Bills:\n";
+
+        pqxx::result unpaidBills = txn.exec(
+            "SELECT id, issue_date, total_amount, amount_paid "
+            "FROM bills WHERE customer_id = $1 AND paid = false ORDER BY issue_date",
+            pqxx::params{customerId}
+        );
+        txn.commit();   // read-only so far, safe to commit before asking more questions
+
+        if (unpaidBills.empty()) { cout << "  ✔ No unpaid bills!\n"; return; }
+
+        cout << "  " << left
+             << setw(38) << "Bill ID" << setw(14) << "Issued"
+             << setw(14) << "Total(KES)" << setw(14) << "Paid(KES)" << "Remaining\n";
+        cout << "  " << string(110, '-') << "\n";
+        for (const auto& row : unpaidBills) {
+            double total = row["total_amount"].as<double>();
+            double paid  = row["amount_paid"].as<double>();
+            cout << "  " << left
+                 << setw(38) << row["id"].as<string>()
+                 << setw(14) << row["issue_date"].as<string>()
+                 << setw(14) << fixed << setprecision(2) << total
+                 << setw(14) << paid
+                 << (total - paid) << "\n";
+        }
+
+        string billId;
+        cout << "\n  Enter Bill ID to pay: ";
+        cin >> billId;
+
+        double amount;
+        cout << "  Amount to Pay (KES): ";
+        cin >> amount;
+
+        cout << "  Method: 1.Cash  2.M-Pesa  3.Bank Transfer  Choose: ";
+        int mc; cin >> mc;
+        string method = (mc == 1 ? "Cash" : mc == 2 ? "M-Pesa" : "Bank Transfer");
+
+        string ref;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        if (method != "Cash") { cout << "  Reference: "; getline(cin, ref); }
+        else ref = "N/A";
+
+        string payDate;
+        cout << "  Date (YYYY-MM-DD): ";
+        getline(cin, payDate);
+
+        makePaymentLogic(customerId, billId, method, ref, amount, payDate);
+
+        cout << "\n  ✔ Payment of KES " << fixed << setprecision(2) << amount << " recorded.\n";
+
+    } catch (const exception& e) {
+        cerr << "  ✘ Payment failed: " << e.what() << "\n";
     }
-  }
-  return false;
 }
-// pay by mpesa paybill number
-void payByMpesaPaybill(){
-  cout << "\n  Pay via M-pesa Paybill \n";
-  if (customers.empty()){cout << "No Customers Yet.\n"; return;}
-  
-  int id;
-  cout <<" Customer ID: ";
-  cin >>id;
 
-  Customer* c = findCustomerById(id);
-  if (!c) {cout << "Not found.\n"; return;}
-  
-  cout <<"\n "<< c->name << " Balance: KES "
-       << fixed << setprecision(2) << c->balance <<"\n\n Unpaid Bills:\n";
-  cout << " " << left <<setw(8) << "Bill #" << setw(14) << "Issued"
-       <<setw(14) << "Total(KES)" << setw(14) << "PaiD(KES)" << "Remaining\n";
-  cout << " " << string(68, '-') << "\n";
-  
-  bool hasUnpaid = false;
-  for (const auto& b : c->bills){
-    if (!b.paid) {
-      cout << " " << left << setw(8) << b.billId << setw(14) << b.issueDate
-           << setw(14) << fixed << setprecision(2) << b.totalAmount
-           << setw(14) << b.amountPaid
-           << (b.totalAmount - b.amountPaid) <<"\n";
-      hasUnpaid = true;     
+// ============================================================
+//  FUNCTION: payByMpesaLogic   (THE WORKER)
+//
+//  Validates the code format, then attempts the insert.
+//  Deliberately does NOT catch pqxx::unique_violation here —
+//  we let it propagate up to the caller (CLI or API), since
+//  each one wants to report a duplicate code differently
+//  (CLI prints a message; API returns HTTP 409 Conflict).
+// ============================================================
+void payByMpesaLogic(const string& customerId, const string& billId,
+                     const string& code, double amount, const string& payDate) {
+    if (!isValidMpesaCode(code)) {
+        throw runtime_error("Invalid M-Pesa code format. Must be 10 letters/digits.");
     }
-  }
-  if (!hasUnpaid){ cout <<"No unpaid bills!\n"; return;}
-
-  int billId;
-  cout << "\n Enter Bill # to pay:";
-  cin >>billId;
-
-  Bill* tb = nullptr;
-  for (auto& b : c->bills)
-      if (b.billId == billId && !b.paid){tb = &b; break;}
-  if(!tb) {cout <<" Bill not Found or already paid.\n"; return;} 
-  double remaining = tb->totalAmount - tb->amountPaid;
-
-  cout <<"\n";
-  cout <<" PAY VIA M-PESA - FOLLOW THESE STEPS \n";
-  cout <<"\n";
-  cout <<" 1. Go to M-Pesa menu on your phone \n";
-  cout <<" 2. Select Lipa Na M-Pesa > Pay Bill \n";
-  cout <<" Business No. :" << MPESA_PAYBILL_NUMBER <<"\n";
-  cout <<" Account No. : "<<c->meterNumber <<"-B" <<billId <<"\n";
-  cout <<" Amount : KES" << fixed << setprecision(2) << remaining <<"\n";
-  cout <<"\n";
-  cout <<"\n Once you receive the M-Pesa confirmations SMS,\n";
-  cout <<" enter the transation code below.\n";
-
-  string code;
-  bool validCode = false;
-
-  while (!validCode){cout <<"\n M-Pesa Transaction Code (or 0 to cancel):"; 
-    cin >> code;
-
-    if (code == "0"){cout << "Payment cancelled.\n"; return;}
-
-    for (auto& ch : code) ch = toupper(ch);
-    if(!isValidMpesaCode(code)){
-      cout <<" Invalid format. Must be exactly 10 lettere/digits.\n";
-      continue;
+    if (amount <= 0) {
+        throw runtime_error("Amount must be greater than zero");
     }
-    if(isCodeAlreadyUsed(code)){
-      cout <<" This transaction code has already been recorded. Check and re-enter.\n";
-      continue;
+
+    pqxx::work txn(getConnection());
+
+    pqxx::result custResult = txn.exec(
+        "SELECT balance FROM customers WHERE id = $1",
+        pqxx::params{customerId}
+    );
+    if (custResult.empty()) {
+        throw runtime_error("Customer not found");
     }
-    validCode = true;
-  }
-  // this confirms the amount the customer is sending
-  double amount;
-  cout <<" Confirm Amount Paid (KES): ";
-  cin >> amount;
+    double balanceBefore = custResult[0]["balance"].as<double>();
 
-  if (amount <= 0){cout<<" Must be greator than zero.\n"; return;}
-  string payDate;
-  cin.ignore(numeric_limits<streamsize>::max(), '\n');
-  cout << "Date (YYYY-MM-DD): ";
-  getline(cin, payDate);
-  
-  Payment p;
-  p.paymentId = c->payments.size() + 1;
-  p.billId = billId;
-  p.date = payDate;
-  p.method = "M-Pesa";
-  p.reference = code;
-  p.amountPaid = amount;
-  p.balanceBefore = c->balance;
+    pqxx::result billCheck = txn.exec(
+        "SELECT id FROM bills WHERE id = $1 AND customer_id = $2 AND paid = false",
+        pqxx::params{billId, customerId}
+    );
+    if (billCheck.empty()) {
+        throw runtime_error("Bill not found, already paid, or doesn't belong to this customer");
+    }
 
-  tb->amountPaid += amount;
-  if(tb->amountPaid >= tb->totalAmount - 0.01) tb->paid = true;
-  c->balance -= amount;
+    // THE INSERT THAT MIGHT THROW pqxx::unique_violation if
+    // this code was already used by anyone, ever.
+    txn.exec(
+        "INSERT INTO payments "
+        "(customer_id, bill_id, payment_date, method, reference, "
+        " amount_paid, balance_before, balance_after) "
+        "VALUES ($1, $2, $3, 'M-Pesa', $4, $5, $6, $6 - $5)",
+        pqxx::params{customerId, billId, payDate, code, amount, balanceBefore}
+    );
 
-  p.balanceAfter = c->balance;
-  c->payments.push_back(p);
+    applyPaymentToBill(txn, billId, customerId, amount);
 
-  cout <<"\n M-Pesa payment recorded - code: "<< code <<"\n";
-  cout << "Amount :KES"<< fixed << setprecision(2)<< amount <<"\n";
-  cout <<" New Balance : KES" << c->balance;
-  if (c->balance < 0) cout << "Credit on account.";
-  cout <<"\n";
-  if(tb->paid) cout <<"Bill #" <<billId << "is Fully PAID\n";
+    txn.commit();
+}
 
+// ============================================================
+//  FUNCTION: payByMpesaPaybill   (THE CLI WRAPPER)
+// ============================================================
+void payByMpesaPaybill() {
+    cout << "\n--- Pay via M-Pesa Paybill ---\n";
 
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
+
+    try {
+        pqxx::work txn(getConnection());
+
+        pqxx::result custResult = txn.exec(
+            "SELECT name, balance, meter_number FROM customers WHERE id = $1",
+            pqxx::params{customerId}
+        );
+        if (custResult.empty()) { cout << "  ✘ Customer not found.\n"; return; }
+
+        string custName    = custResult[0]["name"].as<string>();
+        string meterNumber = custResult[0]["meter_number"].as<string>();
+
+        cout << "\n  " << custName << "  |  Balance: KES "
+             << fixed << setprecision(2) << custResult[0]["balance"].as<double>()
+             << "\n\n  Unpaid Bills:\n";
+
+        pqxx::result unpaidBills = txn.exec(
+            "SELECT id, issue_date, total_amount, amount_paid "
+            "FROM bills WHERE customer_id = $1 AND paid = false ORDER BY issue_date",
+            pqxx::params{customerId}
+        );
+        txn.commit();   // read-only display, safe to commit before more prompts
+
+        if (unpaidBills.empty()) { cout << "  ✔ No unpaid bills!\n"; return; }
+
+        cout << "  " << left
+             << setw(38) << "Bill ID" << setw(14) << "Issued"
+             << setw(14) << "Total(KES)" << "Remaining\n";
+        cout << "  " << string(98, '-') << "\n";
+        for (const auto& row : unpaidBills) {
+            double total = row["total_amount"].as<double>();
+            double paid  = row["amount_paid"].as<double>();
+            cout << "  " << left
+                 << setw(38) << row["id"].as<string>()
+                 << setw(14) << row["issue_date"].as<string>()
+                 << setw(14) << fixed << setprecision(2) << total
+                 << (total - paid) << "\n";
+        }
+
+        string billId;
+        cout << "\n  Enter Bill ID to pay: ";
+        cin >> billId;
+
+        cout << "\n";
+        cout << "  ╔══════════════════════════════════════════╗\n";
+        cout << "  ║   PAY VIA M-PESA — FOLLOW THESE STEPS    ║\n";
+        cout << "  ╠══════════════════════════════════════════╣\n";
+        cout << "  ║  Business No. : " << MPESA_PAYBILL_NUMBER << "\n";
+        cout << "  ║  Account No.  : " << meterNumber << "\n";
+        cout << "  ╚══════════════════════════════════════════╝\n";
+
+        string code;
+        bool gotValidFormat = false;
+        while (!gotValidFormat) {
+            cout << "\n  M-Pesa Transaction Code (or 0 to cancel): ";
+            cin >> code;
+            if (code == "0") { cout << "  Cancelled.\n"; return; }
+            for (auto& ch : code) ch = toupper(ch);
+            if (!isValidMpesaCode(code)) {
+                cout << "  ✘ Invalid format. Must be 10 letters/digits (e.g. QGR7XYZ123).\n";
+                continue;
+            }
+            gotValidFormat = true;
+        }
+
+        double amount;
+        cout << "  Confirm Amount Paid (KES): ";
+        cin >> amount;
+
+        string payDate;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "  Date (YYYY-MM-DD): ";
+        getline(cin, payDate);
+
+        payByMpesaLogic(customerId, billId, code, amount, payDate);
+
+        cout << "\n  ✔ M-Pesa payment recorded — Code: " << code << "\n";
+        cout << "  Amount: KES " << fixed << setprecision(2) << amount << "\n";
+
+    } catch (const pqxx::unique_violation& e) {
+        cerr << "  ✘ This M-Pesa code has already been used. Please check and re-enter.\n";
+    } catch (const exception& e) {
+        cerr << "  ✘ " << e.what() << "\n";
+    }
+}
+
+// ============================================================
+//  FUNCTION: viewPaymentHistory
+// ============================================================
+void viewPaymentHistory() {
+    cout << "\n--- Payment History ---\n";
+
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
+
+    pqxx::work txn(getConnection());
+
+    pqxx::result custResult = txn.exec(
+        "SELECT name, balance FROM customers WHERE id = $1",
+        pqxx::params{customerId}
+    );
+    if (custResult.empty()) { cout << "  ✘ Customer not found.\n"; return; }
+
+    cout << "\n  " << custResult[0]["name"].as<string>()
+         << "  |  Balance: KES "
+         << fixed << setprecision(2) << custResult[0]["balance"].as<double>() << "\n";
+
+    pqxx::result payments = txn.exec(
+        "SELECT payment_date, method, reference, amount_paid, balance_after "
+        "FROM payments WHERE customer_id = $1 ORDER BY payment_date",
+        pqxx::params{customerId}
+    );
+    txn.commit();
+
+    if (payments.empty()) { cout << "  No payments yet.\n"; return; }
+
+    cout << "\n  " << left
+         << setw(14) << "Date" << setw(16) << "Method"
+         << setw(20) << "Reference" << setw(12) << "Amount" << "Bal After\n";
+    cout << "  " << string(75, '-') << "\n";
+
+    double total = 0;
+    for (const auto& row : payments) {
+        double amt = row["amount_paid"].as<double>();
+        cout << "  " << left
+             << setw(14) << row["payment_date"].as<string>()
+             << setw(16) << row["method"].as<string>()
+             << setw(20) << row["reference"].as<string>()
+             << setw(12) << fixed << setprecision(2) << amt
+             << row["balance_after"].as<double>() << "\n";
+        total += amt;
+    }
+    cout << "  " << string(75, '-') << "\n";
+    cout << "  Total Paid: KES " << total << "\n\n";
 }

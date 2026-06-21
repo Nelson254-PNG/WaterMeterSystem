@@ -1,185 +1,192 @@
+// ============================================================
+//  billing.cpp  (DATABASE VERSION)
+//  Tiered cost calculation, bill generation, bill viewing.
+// ============================================================
+
 #include "billing.h"
-#include "global.h"
+#include "db.h"
 #include "constants.h"
-#include "customer.h"
 #include <iostream>
 #include <iomanip>
 using namespace std;
 
-//biiling engine
-void calculateTieredCost(double units, Bill& bill){
-  bill.tier1Units = 0;
-  bill.tier2Units = 0;
-  bill.tier3Units = 0;
-  bill.tier4Units = 0;
+// ============================================================
+//  FUNCTION: calculateTieredCost
+//
+//  UNCHANGED LOGIC from your CLI version — this is pure math,
+//  no database calls. We just return the result instead of
+//  mutating a struct passed by reference.
+// ============================================================
+TierBreakdown calculateTieredCost(double units) {
+    TierBreakdown b{};   // {} zero-initializes every field
+    double rem = units;
 
-  double remaining = units;
-  //0 - 6 m^3 at kes 50
-  if (remaining > 0){
-    bill.tier1Units = min(remaining, TIER1_LIMIT);
-    remaining -= bill.tier1Units;
-  }
-  //7 - 20 at kes 75
-  if (remaining > 0){
-    double tier2Capacity = TIER2_LIMIT - TIER1_LIMIT;
-    bill.tier2Units = min(remaining, tier2Capacity);
-    remaining -= bill.tier2Units;
-  }
-  //21 - 50 at kes 100
-  if (remaining > 0){
-    double tier3Capacity = TIER3_LIMIT - TIER2_LIMIT;
-    bill.tier3Units = min(remaining, tier3Capacity);
-    remaining -= bill.tier3Units;
-  }
-  //51+ at kes 150
-  if (remaining > 0){
-    bill.tier4Units = remaining;
-  }
+    if (rem > 0) { b.tier1Units = min(rem, TIER1_LIMIT);               rem -= b.tier1Units; }
+    if (rem > 0) { b.tier2Units = min(rem, TIER2_LIMIT - TIER1_LIMIT); rem -= b.tier2Units; }
+    if (rem > 0) { b.tier3Units = min(rem, TIER3_LIMIT - TIER2_LIMIT); rem -= b.tier3Units; }
+    if (rem > 0) { b.tier4Units = rem; }
 
-  //calculate cost per tier
-  bill.tier1Cost = bill.tier1Units * TIER1_RATE;
-  bill.tier2Cost = bill.tier2Units * TIER2_RATE;
-  bill.tier3Cost = bill.tier3Units * TIER3_RATE;
-  bill.tier4Cost = bill.tier3Units * TIER4_RATE;
+    b.tier1Cost     = b.tier1Units * TIER1_RATE;
+    b.tier2Cost     = b.tier2Units * TIER2_RATE;
+    b.tier3Cost     = b.tier3Units * TIER3_RATE;
+    b.tier4Cost     = b.tier4Units * TIER4_RATE;
+    b.serviceCharge = SERVICE_CHARGE;
+    b.totalAmount   = b.tier1Cost + b.tier2Cost + b.tier3Cost + b.tier4Cost + b.serviceCharge;
 
-  //fixed charge
-  bill.serviceCharge = SERVICE_CHARGE;
-  
-  //total
-  bill.totalAmount = bill.tier1Cost + bill.tier2Cost + bill.tier3Cost + bill.tier4Cost + bill.serviceCharge;
-
+    return b;
 }
-void generateBill(){
-  cout <<"\n Generate Bill \n";
 
-  if (customers.empty()){
-    cout <<"No customers registered yet.\n";
-    return;
-  }
-  int id;
-  cout << "Enter Customer ID: ";
-  cin >>id;
+// ============================================================
+//  FUNCTION: generateBillLogic   (THE WORKER)
+//
+//  Same four-step transaction as before, but now as a pure
+//  function: no cin/cout, throws on failure, returns the
+//  result the caller needs (bill ID + cost breakdown).
+// ============================================================
+GenerateBillResult generateBillLogic(const string& customerId, const string& issueDate, const string& dueDate) {
+    pqxx::work txn(getConnection());
 
-  Customer* c = findCustomerById(id);
-  if (c == nullptr) {
-    cout <<"Customer not found. \n";
-    return;
-  }
-  //find unbilled records
-  double totalUnits = 0.0;
-  int unbilledCount = 0;
-  
-  for (const auto& r : c->records) {
-    if(!r.billed){
-      totalUnits += r.unitsUsed;
-      unbilledCount++;
+    pqxx::result custResult = txn.exec(
+        "SELECT name FROM customers WHERE id = $1",
+        pqxx::params{customerId}
+    );
+    if (custResult.empty()) {
+        throw runtime_error("Customer not found");
     }
-  }
 
-  if (unbilledCount == 0) {
-    cout <<"No unbilled usage records found for "<< c->name <<".\n";
-    return;
-  }
+    pqxx::result sumResult = txn.exec(
+        "SELECT COALESCE(SUM(units_used), 0) AS total_units, COUNT(*) AS cnt "
+        "FROM water_records WHERE customer_id = $1 AND billed = false",
+        pqxx::params{customerId}
+    );
 
-  //get bill dates from users
-  string issueDate, dueDate;
-  cin.ignore(numeric_limits<streamsize>::max(), '\n');
-  cout <<"Issue Date (YYYY-MM-DD): ";
-  getline(cin, issueDate);
-  cout <<"Due Date (YYYY-MM-DD): ";
-  getline(cin, dueDate);
+    double totalUnits = sumResult[0]["total_units"].as<double>();
+    int unbilledCount  = sumResult[0]["cnt"].as<int>();
 
-  Bill bill;
-  bill.billId = c->bills.size() + 1;
-  bill.issueDate = issueDate;
-  bill.dueDate = dueDate;
-  bill.totalUnits = totalUnits;
-  bill.paid = false;
-
-  calculateTieredCost(totalUnits, bill);
-
-  for (auto& r : c->records) {
-    if (!r.billed){
-      r.billed = true;
+    if (unbilledCount == 0) {
+        throw runtime_error("No unbilled usage records for this customer");
     }
-  }
-  c->bills.push_back(bill);
-  c->balance += bill.totalAmount;
 
-  //print the bill receipts
-  cout <<"\n";
-  cout <<" WATER BILL RECEIPT \n";
-  cout <<"Customer :" << left << setw(27) <<c->name <<"\n";
-  cout <<"Meter No :" << left << setw(27) <<c->meterNumber <<"\n";
-  cout <<"Bill No :" << left << setw(27) <<bill.billId <<"\n";
-  cout <<"Issued :" << left << setw(27) <<issueDate <<"\n";
-  cout <<"Due Date :" << left << setw(27) <<dueDate <<"\n";
-  cout <<"\n";
-  cout <<" USAGE BREAKDOWN\n";
-  cout << fixed << setprecision(2);
-  cout << "Total Units : "<< setw(6) <<totalUnits<<"m³" << setw(18)<<"\n";
-  cout <<"\n";
-  cout <<" TIER CHARGES \n";
-  if (bill.tier1Units > 0)
-  cout <<"Tier 1("<<setw(5) <<bill.tier1Units <<"m³ * KES 50) = "<< setw(8) <<bill.tier1Cost <<"\n";
-  if (bill.tier2Units > 0)
-  cout <<"Tier 2("<<setw(5) <<bill.tier2Units <<"m³ * KES 75) = "<< setw(8) <<bill.tier2Cost <<"\n";
-  if (bill.tier3Units > 0)
-  cout <<"Tier 3("<<setw(5) <<bill.tier3Units <<"m³ * KES 100) = "<< setw(8) <<bill.tier3Cost <<"\n";
-  if (bill.tier4Units > 0)
-  cout <<"Tier 4("<<setw(5) <<bill.tier4Units <<"m³ * KES 150) = "<< setw(8) <<bill.tier4Cost <<"\n";
+    TierBreakdown tb = calculateTieredCost(totalUnits);
 
-  cout <<"Service Charge =" <<setw(8) <<bill.serviceCharge <<"\n";
-  cout <<"\n";
-  cout <<"TOTAL DUE : KES "<< setw(21) <<bill.totalAmount <<"\n";
-  cout <<"\n";
+    pqxx::result billResult = txn.exec(
+        "INSERT INTO bills "
+        "(customer_id, issue_date, due_date, total_units, "
+        " tier1_units, tier2_units, tier3_units, tier4_units, "
+        " tier1_cost, tier2_cost, tier3_cost, tier4_cost, "
+        " service_charge, total_amount, amount_paid, paid) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, false) "
+        "RETURNING id",
+        pqxx::params{
+            customerId, issueDate, dueDate, totalUnits,
+            tb.tier1Units, tb.tier2Units, tb.tier3Units, tb.tier4Units,
+            tb.tier1Cost, tb.tier2Cost, tb.tier3Cost, tb.tier4Cost,
+            tb.serviceCharge, tb.totalAmount
+        }
+    );
+    string billId = billResult[0]["id"].as<string>();
+
+    txn.exec(
+        "UPDATE water_records SET billed = true "
+        "WHERE customer_id = $1 AND billed = false",
+        pqxx::params{customerId}
+    );
+
+    txn.exec(
+        "UPDATE customers SET balance = balance + $1 WHERE id = $2",
+        pqxx::params{tb.totalAmount, customerId}
+    );
+
+    txn.commit();
+
+    GenerateBillResult result;
+    result.billId     = billId;
+    result.totalUnits = totalUnits;
+    result.breakdown  = tb;
+    return result;
 }
-// view bills
-void viewBills(){
-  cout <<"View Bills\n";
-  if (customers.empty()){
-    cout <<" No Customers registered yet. \n";
-    return;
-  }
 
-  int id;
-  cout << " Enter Customer ID: ";
-  cin >> id;
+// ============================================================
+//  FUNCTION: generateBill   (THE CLI WRAPPER)
+// ============================================================
+void generateBill() {
+    cout << "\n--- Generate Bill ---\n";
 
-  Customer* c = findCustomerById(id);
-  if (c == nullptr){
-    cout << "Customer not found.\n";
-    return;
-  }
-  cout <<"\n Customer : " << c->name <<"\n";
-  cout << "Meter No. : " << c->meterNumber <<"\n";
-  cout << "Balance : KES" << fixed << setprecision(2) <<c->balance <<"\n";
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
 
-  if (c->bills.empty()){
-    cout <<" No bills generated yet.\n";
-    return;
-  }
-  cout << "\n"
-       << left
-       << setw(8) <<"Bill #"
-       << setw(14) <<"Issued"
-       << setw(14) <<"Due Date"
-       << setw(12) <<"Units (m³)"
-       << setw(14) <<"Amount (KES)"
-       << setw(10) <<"Status"
-       << "\n";
-  cout <<" " << string(72, '-') <<"\n";
-  
-  for (const auto& b : c->bills) {
-    cout <<" "
-         << left
-         << setw(8) <<b.billId
-         << setw(14) <<b.issueDate
-         << setw(14) <<b.dueDate
-         << setw(12) <<b.totalUnits
-         << setw(14) << fixed << setprecision(2)<<b.totalAmount
-         << setw(10) <<(b.paid? "PAID" : "UNPAID")
-         << "\n";
-  }
-  cout <<"\n";
+    string issueDate, dueDate;
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    cout << "  Issue Date (YYYY-MM-DD): "; getline(cin, issueDate);
+    cout << "  Due Date   (YYYY-MM-DD): "; getline(cin, dueDate);
+
+    try {
+        GenerateBillResult result = generateBillLogic(customerId, issueDate, dueDate);
+
+        cout << "\n  ✔ Bill generated.\n";
+        cout << "  Bill ID     : " << result.billId << "\n";
+        cout << "  Total Units : " << result.totalUnits << " m³\n";
+        cout << "  Total Due   : KES " << fixed << setprecision(2)
+             << result.breakdown.totalAmount << "\n";
+
+    } catch (const exception& e) {
+        cerr << "  ✘ " << e.what() << "\n";
+    }
+}
+
+// ============================================================
+//  FUNCTION: viewBills
+//  Reads bills + the customer's current balance directly from
+//  the database — no struct traversal needed.
+// ============================================================
+void viewBills() {
+    cout << "\n--- Bills ---\n";
+
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
+
+    pqxx::work txn(getConnection());
+
+    pqxx::result custResult = txn.exec(
+        "SELECT name, balance FROM customers WHERE id = $1",
+        pqxx::params{customerId}
+    );
+    if (custResult.empty()) {
+        cout << "  ✘ Customer not found.\n";
+        return;
+    }
+
+    cout << "\n  " << custResult[0]["name"].as<string>()
+         << "  |  Balance: KES "
+         << fixed << setprecision(2) << custResult[0]["balance"].as<double>()
+         << "\n\n";
+
+    pqxx::result bills = txn.exec(
+        "SELECT id, issue_date, due_date, total_units, total_amount, amount_paid, paid "
+        "FROM bills WHERE customer_id = $1 ORDER BY issue_date",
+        pqxx::params{customerId}
+    );
+    txn.commit();
+
+    if (bills.empty()) { cout << "  No bills yet.\n"; return; }
+
+    cout << "  " << left
+         << setw(38) << "Bill ID" << setw(14) << "Issued"
+         << setw(14) << "Due" << setw(10) << "Units"
+         << setw(14) << "Total(KES)" << setw(12) << "Paid(KES)" << "Status\n";
+    cout << "  " << string(112, '-') << "\n";
+
+    for (const auto& row : bills) {
+        cout << "  " << left
+             << setw(38) << row["id"].as<string>()
+             << setw(14) << row["issue_date"].as<string>()
+             << setw(14) << row["due_date"].as<string>()
+             << setw(10) << row["total_units"].as<double>()
+             << setw(14) << fixed << setprecision(2) << row["total_amount"].as<double>()
+             << setw(12) << row["amount_paid"].as<double>()
+             << (row["paid"].as<bool>() ? "PAID" : "UNPAID") << "\n";
+    }
+    cout << "\n";
 }

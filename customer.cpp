@@ -67,20 +67,49 @@ bool customerExists(const string& customerId) {
 }
 
 // ============================================================
-//  FUNCTION: registerCustomer
+//  FUNCTION: registerCustomerLogic   (THE WORKER)
 //
-//  BEFORE: built a Customer struct, pushed it into a vector.
-//  NOW: collects the same input, then INSERTs a row.
-//  Postgres generates the UUID automatically (DEFAULT
-//  uuid_generate_v4() from our schema) — we don't set it.
+//  THIS is the actual database work — no cin, no cout.
+//  Takes values directly as parameters, returns the result,
+//  throws on failure. Both registerCustomer() (CLI) and the
+//  future API handler call THIS SAME function.
+//
+//  Why this matters: if you ever need to change HOW a customer
+//  gets inserted (add a field, change a default), you change
+//  it in exactly one place, and both the CLI and the API
+//  automatically get the fix.
+// ============================================================
+NewCustomerResult registerCustomerLogic(const string& name, const string& phone, double openingReading) {
+    string meterNumber = generateMeterNumber();
+
+    pqxx::work txn(getConnection());
+
+    pqxx::result r = txn.exec(
+        "INSERT INTO customers (name, meter_number, phone, balance, last_reading) "
+        "VALUES ($1, $2, $3, 0.00, $4) "
+        "RETURNING id",
+        pqxx::params{name, meterNumber, phone, openingReading}
+    );
+    txn.commit();
+
+    NewCustomerResult result;
+    result.id          = r[0][0].as<string>();
+    result.meterNumber = meterNumber;
+    return result;
+}
+
+// ============================================================
+//  FUNCTION: registerCustomer   (THE CLI WRAPPER)
+//
+//  Now just asks questions, then hands the answers straight
+//  to registerCustomerLogic(). All the actual database work
+//  has moved out of this function entirely.
 // ============================================================
 void registerCustomer() {
     cout << "\n--- Register New Customer ---\n";
 
-    string name, phone, meterNumber;
+    string name, phone;
     double openingReading;
-
-    meterNumber = generateMeterNumber();
 
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
     cout << "  Full Name    : "; getline(cin, name);
@@ -88,29 +117,13 @@ void registerCustomer() {
     cout << "  Opening Meter Reading (m³): "; cin >> openingReading;
 
     try {
-        pqxx::work txn(getConnection());
-
-        // RETURNING id lets us get back the auto-generated UUID
-        // immediately after inserting — useful for confirming
-        // to the user, or chaining further operations.
-        pqxx::result r = txn.exec(
-            "INSERT INTO customers (name, meter_number, phone, balance, last_reading) "
-            "VALUES ($1, $2, $3, 0.00, $4) "
-            "RETURNING id",
-            pqxx::params{name, meterNumber, phone, openingReading}
-        );
-        txn.commit();
-
-        string newId = r[0][0].as<string>();
+        NewCustomerResult result = registerCustomerLogic(name, phone, openingReading);
 
         cout << "\n  ✔ Registered!\n";
-        cout << "  Customer ID  : " << newId << "\n";
-        cout << "  Meter Number : " << meterNumber << "\n";
+        cout << "  Customer ID  : " << result.id << "\n";
+        cout << "  Meter Number : " << result.meterNumber << "\n";
 
     } catch (const exception& e) {
-        // If anything goes wrong (e.g. duplicate meter_number,
-        // which our schema's UNIQUE constraint would catch),
-        // we land here instead of crashing.
         cerr << "  ✘ Registration failed: " << e.what() << "\n";
     }
 }
