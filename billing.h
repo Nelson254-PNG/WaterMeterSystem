@@ -1,10 +1,6 @@
 #pragma once
-// ============================================================
-//  billing.h
-//  Declarations for bill generation functions.
-//  PHASE C: worker function added for API reuse.
-// ============================================================
 
+//  Declarations for bill generation functions.
 #include <string>
 using namespace std;
 
@@ -17,7 +13,6 @@ struct TierBreakdown {
 
 TierBreakdown calculateTieredCost(double units);
 
-// ── THE WORKER ────────────────────────────────────────────────
 // Holds both the new bill's ID and its cost breakdown, since
 // the caller (CLI or API) needs both to report back fully.
 struct GenerateBillResult {

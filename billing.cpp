@@ -1,8 +1,5 @@
-// ============================================================
-//  billing.cpp  (DATABASE VERSION)
-//  Tiered cost calculation, bill generation, bill viewing.
-// ============================================================
 
+//  Tiered cost calculation, bill generation, bill viewing.
 #include "billing.h"
 #include "db.h"
 #include "constants.h"
@@ -10,15 +7,9 @@
 #include <iomanip>
 using namespace std;
 
-// ============================================================
 //  FUNCTION: calculateTieredCost
-//
-//  UNCHANGED LOGIC from your CLI version — this is pure math,
-//  no database calls. We just return the result instead of
-//  mutating a struct passed by reference.
-// ============================================================
 TierBreakdown calculateTieredCost(double units) {
-    TierBreakdown b{};   // {} zero-initializes every field
+    TierBreakdown b{};   
     double rem = units;
 
     if (rem > 0) { b.tier1Units = min(rem, TIER1_LIMIT);               rem -= b.tier1Units; }
@@ -36,13 +27,7 @@ TierBreakdown calculateTieredCost(double units) {
     return b;
 }
 
-// ============================================================
-//  FUNCTION: generateBillLogic   (THE WORKER)
-//
-//  Same four-step transaction as before, but now as a pure
-//  function: no cin/cout, throws on failure, returns the
-//  result the caller needs (bill ID + cost breakdown).
-// ============================================================
+//  FUNCTION: generateBillLogic  
 GenerateBillResult generateBillLogic(const string& customerId, const string& issueDate, const string& dueDate) {
     pqxx::work txn(getConnection());
 
@@ -106,9 +91,7 @@ GenerateBillResult generateBillLogic(const string& customerId, const string& iss
     return result;
 }
 
-// ============================================================
-//  FUNCTION: generateBill   (THE CLI WRAPPER)
-// ============================================================
+//  FUNCTION: generateBill  
 void generateBill() {
     cout << "\n--- Generate Bill ---\n";
 
@@ -135,11 +118,7 @@ void generateBill() {
     }
 }
 
-// ============================================================
 //  FUNCTION: viewBills
-//  Reads bills + the customer's current balance directly from
-//  the database — no struct traversal needed.
-// ============================================================
 void viewBills() {
     cout << "\n--- Bills ---\n";
 

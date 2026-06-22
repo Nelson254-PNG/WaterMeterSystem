@@ -1,9 +1,4 @@
-// ============================================================
-//  main.cpp  (DATABASE VERSION)
-//  Entry point. Connects to PostgreSQL on startup, disconnects
-//  cleanly on exit. Otherwise unchanged from your CLI design —
-//  same menu, same switch/case dispatch.
-// ============================================================
+
 
 #include <iostream>
 using namespace std;

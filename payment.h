@@ -1,9 +1,4 @@
 #pragma once
-// ============================================================
-//  payment.h
-//  Declarations for payment processing functions.
-//  PHASE C: worker functions added for API reuse.
-// ============================================================
 
 #include <string>
 using namespace std;
@@ -14,7 +9,7 @@ void viewPaymentHistory();
 bool isValidMpesaCode(const string& code);
 void payByMpesaPaybill();
 
-// ── THE WORKERS ────────────────────────────────────────────────
+
 // Generic payment (Cash/Bank/Other). Returns nothing — caller
 // already knows the amount and method; nothing new to report
 // besides success/failure, which is conveyed via exception.

@@ -1,14 +1,3 @@
-// ============================================================
-//  reports.cpp  (DATABASE VERSION)
-//  System-wide dashboard and per-customer account statement.
-//
-//  THE BIG SHIFT: your CLI version walked THREE NESTED LOOPS
-//  (every customer -> every bill -> every payment) to compute
-//  totals. Here, we ask Postgres to do that aggregation in a
-//  handful of SQL statements — the database engine is built
-//  specifically to do this kind of work efficiently, even
-//  across millions of rows.
-// ============================================================
 
 #include "reports.h"
 #include "db.h"
@@ -20,22 +9,14 @@ static void sep(int w = 60, char ch = '=') {
     cout << "  " << string(w, ch) << "\n";
 }
 
-// ============================================================
-//  FUNCTION: systemDashboard
-//
-//  Each block below is ONE query replacing what used to be
-//  a section of your nested loop. We run them as separate,
-//  independent SELECTs (not all wrapped in one transaction)
-//  because these are pure reads — nothing here needs to be
-//  atomic with anything else.
-// ============================================================
+
 void systemDashboard() {
     cout << "\n";
     sep(); cout << "  ||     SYSTEM DASHBOARD                        ||\n"; sep();
 
     pqxx::work txn(getConnection());
 
-    // ── Customers ──────────────────────────────────────────
+    // Customers
     pqxx::result custCount = txn.exec("SELECT COUNT(*) FROM customers");
     int totalCustomers = custCount[0][0].as<int>();
 
@@ -45,7 +26,7 @@ void systemDashboard() {
         return;
     }
 
-    // ── Water usage ────────────────────────────────────────
+    // Water usage 
     // COALESCE handles the case where there are zero rows,
     // which would otherwise make SUM() return NULL
     pqxx::result usage = txn.exec(
@@ -55,9 +36,7 @@ void systemDashboard() {
     int    totalReadings  = usage[0]["cnt"].as<int>();
     double totalUnitsUsed = usage[0]["total_units"].as<double>();
 
-    // ── Billing ────────────────────────────────────────────
-    // FILTER lets us count conditionally within ONE query —
-    // this replaces your C++ "b.paid ? totalPaidBills++ : ..."
+    //Billing 
     pqxx::result billing = txn.exec(
         "SELECT COUNT(*) AS total_bills, "
         "       COUNT(*) FILTER (WHERE paid = true)  AS paid_bills, "
@@ -70,7 +49,7 @@ void systemDashboard() {
     int    totalUnpaidBills = billing[0]["unpaid_bills"].as<int>();
     double totalBilled      = billing[0]["total_billed"].as<double>();
 
-    // ── Payments ───────────────────────────────────────────
+    //  Payments
     pqxx::result paymentsAgg = txn.exec(
         "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_paid), 0) AS total_collected "
         "FROM payments"
@@ -78,9 +57,7 @@ void systemDashboard() {
     int    totalPayments  = paymentsAgg[0]["cnt"].as<int>();
     double totalCollected = paymentsAgg[0]["total_collected"].as<double>();
 
-    // ── Balances ───────────────────────────────────────────
-    // FILTER again — sum only the positive balances (owing)
-    // separately from the negative ones (credit)
+    // Balances 
     pqxx::result balances = txn.exec(
         "SELECT "
         "  COALESCE(SUM(balance) FILTER (WHERE balance > 0), 0) AS outstanding, "
@@ -92,7 +69,7 @@ void systemDashboard() {
 
     txn.commit();
 
-    // ── Print — identical formatting to your CLI version ────
+    // Print — identical formatting to your CLI version 
     cout << fixed << setprecision(2);
     cout << "\n  CUSTOMERS\n";       sep(60, '-');
     cout << "  Total Registered    : " << totalCustomers << "\n";
@@ -117,13 +94,7 @@ void systemDashboard() {
     sep(); cout << "\n";
 }
 
-// ============================================================
-//  FUNCTION: accountStatement
-//
-//  Three independent SELECTs, each pre-filtered to one
-//  customer_id. No struct traversal — every section pulls
-//  exactly what it needs directly from its own table.
-// ============================================================
+
 void accountStatement() {
     cout << "\n--- Account Statement ---\n";
 
@@ -152,7 +123,7 @@ void accountStatement() {
          << (balance < 0 ? "  (CREDIT)" : balance == 0 ? "  (CLEAR)" : "  (OWING)")
          << "\n";
 
-    // ── Usage records ────────────────────────────────────────
+    //  Usage records 
     pqxx::result records = txn.exec(
         "SELECT reading_date, previous_reading, current_reading, units_used, billed "
         "FROM water_records WHERE customer_id = $1 ORDER BY reading_date",
@@ -178,7 +149,7 @@ void accountStatement() {
         cout << "  Total Usage: " << totalUsedSum << " m³\n";
     }
 
-    // ── Bills ──────────────────────────────────────────────
+    // ── Bills 
     pqxx::result bills = txn.exec(
         "SELECT issue_date, due_date, total_units, total_amount, amount_paid, paid "
         "FROM bills WHERE customer_id = $1 ORDER BY issue_date",
@@ -205,7 +176,7 @@ void accountStatement() {
         cout << "  Billed: KES " << tb << "  |  Paid: KES " << tp << "\n";
     }
 
-    // ── Payments ───────────────────────────────────────────
+    // ── Payments
     pqxx::result payments = txn.exec(
         "SELECT payment_date, method, amount_paid, balance_after "
         "FROM payments WHERE customer_id = $1 ORDER BY payment_date",
@@ -230,7 +201,7 @@ void accountStatement() {
         cout << "  Total Paid: KES " << totalPaid << "\n";
     }
 
-    // ── Summary ────────────────────────────────────────────
+    // ── Summary 
     cout << "\n"; sep(64);
     cout << "  Current Balance: KES " << balance
          << (balance < 0 ? "  ★ CREDIT" : balance == 0 ? "  ✔ CLEAR" : "  ✘ OWING")

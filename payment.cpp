@@ -1,8 +1,3 @@
-// ============================================================
-//  payment.cpp  (DATABASE VERSION)
-//  Processing payments — both generic (Cash/Bank) and the
-//  M-Pesa Paybill manual reconciliation flow.
-// ============================================================
 
 #include "payment.h"
 #include "db.h"
@@ -12,11 +7,7 @@
 #include <cctype>
 using namespace std;
 
-// ============================================================
-//  FUNCTION: isValidMpesaCode  (UNCHANGED)
-//  Pure string validation — no database involved, so this
-//  function is identical to your CLI version.
-// ============================================================
+//  FUNCTION: isValidMpesaCode 
 bool isValidMpesaCode(const string& code) {
     if (code.length() != 10) return false;
     for (char ch : code) {
@@ -25,25 +16,14 @@ bool isValidMpesaCode(const string& code) {
     return true;
 }
 
-// ============================================================
-//  HELPER: applyPaymentToBill
-//
 //  Shared logic used by BOTH makePayment() and payByMpesaPaybill().
 //  Rather than duplicating these database statements in two
 //  places, we centralize them here.
-//
-//  Takes an OPEN transaction (txn) so the caller controls
-//  when to commit — this lets each calling function decide
-//  its own error handling and messaging around the same core
-//  database operations.
-// ============================================================
+
 void applyPaymentToBill(pqxx::work& txn, const string& billId,
                          const string& customerId, double amount) {
     // Update the bill: add to amount_paid, and flip paid=true
-    // if the new total meets or exceeds the bill's total_amount.
-    // We do this comparison INSIDE SQL using a CASE expression,
-    // so Postgres makes the decision using its own fresh data —
-    // no risk of working with a stale value we read earlier.
+    
     txn.exec(
         "UPDATE bills SET "
         "  amount_paid = amount_paid + $1, "
@@ -58,15 +38,10 @@ void applyPaymentToBill(pqxx::work& txn, const string& billId,
         pqxx::params{amount, customerId}
     );
 }
-
-// ============================================================
-//  FUNCTION: makePaymentLogic   (THE WORKER)
-//
 //  Pure database logic for a generic payment. Looks up the
 //  customer's current balance itself (rather than trusting a
 //  value the caller might have read earlier and gone stale),
 //  inserts the payment record, then applies it to the bill.
-// ============================================================
 void makePaymentLogic(const string& customerId, const string& billId,
                       const string& method, const string& reference,
                       double amount, const string& payDate) {
@@ -107,9 +82,7 @@ void makePaymentLogic(const string& customerId, const string& billId,
     txn.commit();
 }
 
-// ============================================================
-//  FUNCTION: makePayment   (THE CLI WRAPPER)
-// ============================================================
+
 void makePayment() {
     cout << "\n--- Make Payment ---\n";
 
@@ -186,15 +159,12 @@ void makePayment() {
     }
 }
 
-// ============================================================
-//  FUNCTION: payByMpesaLogic   (THE WORKER)
-//
 //  Validates the code format, then attempts the insert.
 //  Deliberately does NOT catch pqxx::unique_violation here —
 //  we let it propagate up to the caller (CLI or API), since
 //  each one wants to report a duplicate code differently
 //  (CLI prints a message; API returns HTTP 409 Conflict).
-// ============================================================
+
 void payByMpesaLogic(const string& customerId, const string& billId,
                      const string& code, double amount, const string& payDate) {
     if (!isValidMpesaCode(code)) {
@@ -238,9 +208,6 @@ void payByMpesaLogic(const string& customerId, const string& billId,
     txn.commit();
 }
 
-// ============================================================
-//  FUNCTION: payByMpesaPaybill   (THE CLI WRAPPER)
-// ============================================================
 void payByMpesaPaybill() {
     cout << "\n--- Pay via M-Pesa Paybill ---\n";
 
@@ -292,12 +259,11 @@ void payByMpesaPaybill() {
         cin >> billId;
 
         cout << "\n";
-        cout << "  ╔══════════════════════════════════════════╗\n";
-        cout << "  ║   PAY VIA M-PESA — FOLLOW THESE STEPS    ║\n";
-        cout << "  ╠══════════════════════════════════════════╣\n";
-        cout << "  ║  Business No. : " << MPESA_PAYBILL_NUMBER << "\n";
-        cout << "  ║  Account No.  : " << meterNumber << "\n";
-        cout << "  ╚══════════════════════════════════════════╝\n";
+        cout << "  PAY VIA M-PESA — FOLLOW THESE STEPS \n";
+        cout << " \n";
+        cout << " Business No. : " << MPESA_PAYBILL_NUMBER << "\n";
+        cout << " Account No.  : " << meterNumber << "\n";
+        cout << " \n";
 
         string code;
         bool gotValidFormat = false;
@@ -334,9 +300,6 @@ void payByMpesaPaybill() {
     }
 }
 
-// ============================================================
-//  FUNCTION: viewPaymentHistory
-// ============================================================
 void viewPaymentHistory() {
     cout << "\n--- Payment History ---\n";
 

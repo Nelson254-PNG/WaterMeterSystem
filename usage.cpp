@@ -1,9 +1,4 @@
-// ============================================================
-//  usage.cpp  (DATABASE VERSION)
-//  Recording meter readings and viewing usage history.
-//  Every record now belongs to a customer via customer_id —
-//  a real foreign key, not a nested vector.
-// ============================================================
+
 
 #include "usage.h"
 #include "db.h"
@@ -11,16 +6,6 @@
 #include <iomanip>
 using namespace std;
 
-// ============================================================
-//  FUNCTION: recordUsageLogic   (THE WORKER)
-//
-//  Pure database logic — no cin/cout. Validates that the
-//  reading isn't going backwards, then does the insert +
-//  balance update in one transaction. Throws on any failure,
-//  including "customer not found" and "reading too low" —
-//  these are now exceptions, not printed messages, since the
-//  caller (CLI or API) decides how to report them.
-// ============================================================
 double recordUsageLogic(const string& customerId, double currentReading, const string& date) {
     pqxx::work txn(getConnection());
 
@@ -58,11 +43,9 @@ double recordUsageLogic(const string& customerId, double currentReading, const s
     return unitsUsed;
 }
 
-// ============================================================
-//  FUNCTION: recordUsage   (THE CLI WRAPPER)
+
 //  Now just gathers input and reports the result/error —
 //  all database logic lives in recordUsageLogic().
-// ============================================================
 void recordUsage() {
     cout << "\n--- Record Water Usage ---\n";
 
@@ -87,17 +70,10 @@ void recordUsage() {
     }
 }
 
-// ============================================================
-//  FUNCTION: viewUsageHistory
-//
-//  BEFORE: looped through c->records (a vector already
-//  filtered to one customer because it lived INSIDE that
-//  customer's struct).
-//
 //  NOW: we must explicitly filter with WHERE customer_id = $1
 //  — the database doesn't "know" which records belong to whom
 //  until we ask it directly.
-// ============================================================
+
 void viewUsageHistory() {
     cout << "\n--- Usage History ---\n";
 

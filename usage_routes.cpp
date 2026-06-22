@@ -1,7 +1,4 @@
-// ============================================================
-//  usage_routes.cpp
-//  HTTP handlers for water usage endpoints.
-// ============================================================
+
 
 #include "usage_routes.h"
 #include "usage.h"
@@ -11,16 +8,13 @@ using namespace std;
 
 void registerUsageRoutes(crow::SimpleApp& app) {
 
-    // ========================================================
-    //  POST /customers/<id>/usage
-    //  Body: { "currentReading": 135.5, "date": "2026-06-21" }
-    //
+   
     //  Notice the customer ID is in the URL PATH this time,
     //  not the JSON body — this is a common REST convention:
     //  "usage records belonging to THIS specific customer."
     //  Crow lets us capture path segments with <string> in
     //  the route pattern.
-    // ========================================================
+    
     CROW_ROUTE(app, "/customers/<string>/usage").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -58,10 +52,8 @@ void registerUsageRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
-    //  GET /customers/<id>/usage
     //  Returns the full usage history for one customer.
-    // ========================================================
+   
     CROW_ROUTE(app, "/customers/<string>/usage").methods(crow::HTTPMethod::Get)
     ([](const string& customerId) {
         try {

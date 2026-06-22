@@ -1,19 +1,4 @@
-// ============================================================
-//  customer_routes.cpp
 //  HTTP handlers for customer-related endpoints.
-//
-//  THE PATTERN FOR EVERY HANDLER:
-//    1. Parse the incoming JSON body
-//    2. Validate the basics (is a required field missing?)
-//    3. Call the existing worker function from customer.cpp
-//    4. Build a JSON response, set the right HTTP status code
-//    5. Catch exceptions, turn them into error responses
-//
-//  Nothing here talks to the database directly — that's all
-//  still inside customer.cpp. This file is ONLY about
-//  translating HTTP <-> your existing C++ functions.
-// ============================================================
-
 #include "customer_routes.h"
 #include "customer.h"
 #include "db.h"
@@ -22,14 +7,8 @@ using namespace std;
 
 void registerCustomerRoutes(crow::SimpleApp& app) {
 
-    // ========================================================
-    //  POST /customers
-    //  Body: { "name": "...", "phone": "...", "openingReading": 0 }
-    //
-    //  THIS REPLACES registerCustomer()'s interactive prompts.
-    //  Instead of cin >> reading the terminal, we read the
-    //  SAME three values out of a JSON request body.
-    // ========================================================
+    //  POST /customers details
+    
     CROW_ROUTE(app, "/customers").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req) {
 
@@ -75,14 +54,8 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
     //  GET /customers
-    //  Returns every customer as a JSON array.
-    //
-    //  THIS REPLACES listCustomers()'s cout table-printing —
-    //  same underlying SELECT, just returned as JSON instead
-    //  of formatted text.
-    // ========================================================
+    
     CROW_ROUTE(app, "/customers").methods(crow::HTTPMethod::Get)
     ([]() {
         try {
@@ -120,11 +93,8 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
     //  GET /customers/search?name=...
-    //  Query parameters, not a JSON body — common pattern for
-    //  GET requests since GET requests don't usually have bodies.
-    // ========================================================
+    
     CROW_ROUTE(app, "/customers/search")
     ([](const crow::request& req) {
         auto query = req.url_params.get("name");

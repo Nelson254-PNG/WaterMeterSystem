@@ -1,8 +1,4 @@
-// ============================================================
-//  billing_routes.cpp
 //  HTTP handlers for bill generation and viewing.
-// ============================================================
-
 #include "billing_routes.h"
 #include "billing.h"
 #include "db.h"
@@ -24,10 +20,8 @@ static crow::json::wvalue tierBreakdownToJson(const TierBreakdown& tb) {
 
 void registerBillingRoutes(crow::SimpleApp& app) {
 
-    // ========================================================
     //  POST /customers/<id>/bills
-    //  Body: { "issueDate": "2026-06-21", "dueDate": "2026-07-05" }
-    // ========================================================
+  
     CROW_ROUTE(app, "/customers/<string>/bills").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -60,11 +54,8 @@ void registerBillingRoutes(crow::SimpleApp& app) {
             return crow::response(status, err);
         }
     });
-
-    // ========================================================
-    //  GET /customers/<id>/bills
+        
     //  Returns all bills for one customer, plus their balance.
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/bills").methods(crow::HTTPMethod::Get)
     ([](const string& customerId) {
         try {

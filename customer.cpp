@@ -1,10 +1,5 @@
-// ============================================================
-//  customer.cpp  (DATABASE VERSION)
-//  Everything about registering, listing, and finding customers
-//  now reads and writes through PostgreSQL instead of an
-//  in-memory vector.
-// ============================================================
 
+//  Everything about registering, listing, and finding customers
 #include "customer.h"
 #include "db.h"
 #include <iostream>
@@ -13,22 +8,16 @@
 #include <cctype>
 using namespace std;
 
-// ── Lowercases every character for case-insensitive search ────
-// (Unchanged — this is pure string logic, no database involved)
+// Lowercases every character for case-insensitive search 
+
 string toLowerStr(const string& s) {
     string result = s;
     transform(result.begin(), result.end(), result.begin(), ::tolower);
     return result;
 }
-
-// ============================================================
-//  FUNCTION: generateMeterNumber
-//
-//  BEFORE: used customers.size() from the in-memory vector.
-//  NOW: asks the database directly how many rows exist,
-//  via a COUNT(*) query. This is the database equivalent
+// asks the database directly how many rows exist,via a COUNT(*) query. This is the database equivalent
 //  of c.size().
-// ============================================================
+
 string generateMeterNumber() {
     pqxx::work txn(getConnection());
 
@@ -47,10 +36,7 @@ string generateMeterNumber() {
     return "MTR-" + padded;
 }
 
-// ============================================================
-//  FUNCTION: customerExists
-//  Checks the database directly — no more searching a vector.
-// ============================================================
+
 bool customerExists(const string& customerId) {
     pqxx::work txn(getConnection());
 
@@ -66,19 +52,11 @@ bool customerExists(const string& customerId) {
     return r[0][0].as<int>() > 0;
 }
 
-// ============================================================
-//  FUNCTION: registerCustomerLogic   (THE WORKER)
-//
-//  THIS is the actual database work — no cin, no cout.
-//  Takes values directly as parameters, returns the result,
-//  throws on failure. Both registerCustomer() (CLI) and the
-//  future API handler call THIS SAME function.
-//
 //  Why this matters: if you ever need to change HOW a customer
 //  gets inserted (add a field, change a default), you change
 //  it in exactly one place, and both the CLI and the API
 //  automatically get the fix.
-// ============================================================
+
 NewCustomerResult registerCustomerLogic(const string& name, const string& phone, double openingReading) {
     string meterNumber = generateMeterNumber();
 
@@ -98,13 +76,10 @@ NewCustomerResult registerCustomerLogic(const string& name, const string& phone,
     return result;
 }
 
-// ============================================================
-//  FUNCTION: registerCustomer   (THE CLI WRAPPER)
-//
+
 //  Now just asks questions, then hands the answers straight
 //  to registerCustomerLogic(). All the actual database work
 //  has moved out of this function entirely.
-// ============================================================
 void registerCustomer() {
     cout << "\n--- Register New Customer ---\n";
 
@@ -128,13 +103,10 @@ void registerCustomer() {
     }
 }
 
-// ============================================================
-//  FUNCTION: listCustomers
-//
+
 //  BEFORE: looped through the vector with a for-range loop.
 //  NOW: runs a SELECT, then loops through the RESULT SET —
 //  conceptually identical, just the data source changed.
-// ============================================================
 void listCustomers() {
     cout << "\n--- Customers ---\n";
 
@@ -168,15 +140,12 @@ void listCustomers() {
     cout << "\n";
 }
 
-// ============================================================
-//  FUNCTION: searchCustomerByName
-//
+
 //  BEFORE: looped through every customer, calling toLowerStr()
 //  and string::find() manually in C++.
 //  NOW: we let PostgreSQL do the searching using ILIKE —
 //  a built-in case-insensitive pattern match. Much faster on
 //  large tables since the database can use an index for this.
-// ============================================================
 void searchCustomerByName() {
     cout << "\n--- Search Customer by Name ---\n";
     string query;
