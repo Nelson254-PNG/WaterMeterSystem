@@ -1,6 +1,9 @@
-
+// ============================================================
+//  payment_routes.cpp
 //  HTTP handlers for payment endpoints — both generic
 //  (Cash/Bank) and M-Pesa Paybill.
+// ============================================================
+
 #include "payment_routes.h"
 #include "payment.h"
 #include "db.h"
@@ -9,13 +12,14 @@ using namespace std;
 
 void registerPaymentRoutes(crow::SimpleApp& app) {
 
-    
+    // ========================================================
     //  POST /customers/<id>/payments
     //  Body: {
     //    "billId": "...", "method": "Cash", "reference": "N/A",
     //    "amount": 500, "date": "2026-06-21"
     //  }
     //  Generic payment — Cash, Bank Transfer, or Other.
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -52,7 +56,7 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
         }
     });
 
-    
+    // ========================================================
     //  POST /customers/<id>/payments/mpesa
     //  Body: { "billId": "...", "code": "QGR7XYZ123", "amount": 500, "date": "..." }
     //
@@ -63,7 +67,7 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
     //  would be technically wrong; 409 tells the mobile app
     //  exactly what kind of problem this is, so it can show
     //  a specific "code already used" message to the user.
-    
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments/mpesa").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -107,8 +111,60 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
         }
     });
 
-    
+    // ========================================================
+    //  POST /customers/<id>/payments/mpesa-till
+    //  Body: { "billId": "...", "code": "QGR7XYZ123", "amount": 500, "date": "..." }
+    //
+    //  Same shape and same 409-on-duplicate behavior as the
+    //  Paybill route above — the only difference is which
+    //  worker function it calls. The mobile app is responsible
+    //  for showing the right instructions (Till Number only,
+    //  no account number) before the user gets here.
+    // ========================================================
+    CROW_ROUTE(app, "/customers/<string>/payments/mpesa-till").methods(crow::HTTPMethod::Post)
+    ([](const crow::request& req, const string& customerId) {
+
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("billId") || !body.has("code") ||
+            !body.has("amount") || !body.has("date")) {
+            crow::json::wvalue err;
+            err["error"] = "Missing required field: billId, code, amount, date";
+            return crow::response(400, err);
+        }
+
+        string billId = body["billId"].s();
+        string code   = body["code"].s();
+        double amount  = body["amount"].d();
+        string date     = body["date"].s();
+
+        try {
+            payByTillLogic(customerId, billId, code, amount, date);
+
+            crow::json::wvalue response;
+            response["status"] = "success";
+            response["code"]   = code;
+            response["amount"] = amount;
+            return crow::response(201, response);
+
+        } catch (const pqxx::unique_violation& e) {
+            crow::json::wvalue err;
+            err["error"] = "This M-Pesa code has already been used";
+            return crow::response(409, err);
+
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+
+            string msg = e.what();
+            int status = (msg.find("not found") != string::npos) ? 404 : 400;
+            return crow::response(status, err);
+        }
+    });
+
+    // ========================================================
+    //  GET /customers/<id>/payments
     //  Full payment history for one customer.
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments").methods(crow::HTTPMethod::Get)
     ([](const string& customerId) {
         try {

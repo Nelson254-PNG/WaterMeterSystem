@@ -9,6 +9,8 @@ void viewPaymentHistory();
 bool isValidMpesaCode(const string& code);
 void payByMpesaPaybill();
 
+void payByMpesaTill();
+
 
 // Generic payment (Cash/Bank/Other). Returns nothing — caller
 // already knows the amount and method; nothing new to report
@@ -22,3 +24,6 @@ void makePaymentLogic(const string& customerId, const string& billId,
 // if the code was already used).
 void payByMpesaLogic(const string& customerId, const string& billId,
                      const string& code, double amount, const string& payDate);
+//MPESA PAYMENNT VIA TILL NUMBER
+void payByTillLogic(const string& customerId, const string& billId,
+                     const string& code, double amount, const string& payDate);                     

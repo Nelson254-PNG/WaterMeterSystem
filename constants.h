@@ -13,3 +13,5 @@ const double TIER3_RATE = 100.0;
 const double TIER4_RATE = 150.0;
 
 const std::string MPESA_PAYBILL_NUMBER = "000000";
+
+const std::string MPESA_TILL_NUMBER = "9461523";

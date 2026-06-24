@@ -346,8 +346,163 @@ void payByMpesaPaybill() {
 }
 
 // ============================================================
-//  FUNCTION: viewPaymentHistory
+//  FUNCTION: payByTillLogic   (THE WORKER)
+//
+//  Nearly identical to payByMpesaLogic — same validation, same
+//  duplicate-code protection via the database's unique index.
+//  The ONLY real difference is conceptual: a Till payment has
+//  no separate account reference, since the customer just
+//  enters the Till Number itself on their phone. We still
+//  store the transaction code the same way (method = 'M-Pesa'),
+//  since from the system's point of view it's still an M-Pesa
+//  payment that needs the same duplicate-code protection —
+//  the unique_mpesa_reference index in your schema doesn't
+//  care WHICH M-Pesa flow produced the code.
 // ============================================================
+void payByTillLogic(const string& customerId, const string& billId,
+                     const string& code, double amount, const string& payDate) {
+    if (!isValidMpesaCode(code)) {
+        throw runtime_error("Invalid M-Pesa code format. Must be 10 letters/digits.");
+    }
+    if (amount <= 0) {
+        throw runtime_error("Amount must be greater than zero");
+    }
+
+    pqxx::work txn(getConnection());
+
+    pqxx::result custResult = txn.exec(
+        "SELECT balance FROM customers WHERE id = $1",
+        pqxx::params{customerId}
+    );
+    if (custResult.empty()) {
+        throw runtime_error("Customer not found");
+    }
+    double balanceBefore = custResult[0]["balance"].as<double>();
+
+    pqxx::result billCheck = txn.exec(
+        "SELECT id FROM bills WHERE id = $1 AND customer_id = $2 AND paid = false",
+        pqxx::params{billId, customerId}
+    );
+    if (billCheck.empty()) {
+        throw runtime_error("Bill not found, already paid, or doesn't belong to this customer");
+    }
+
+    double balanceAfter = balanceBefore - amount;
+
+    // Same protection as Paybill — the unique_mpesa_reference
+    // index throws pqxx::unique_violation on a duplicate code,
+    // regardless of which M-Pesa flow it came from.
+    txn.exec(
+        "INSERT INTO payments "
+        "(customer_id, bill_id, payment_date, method, reference, "
+        " amount_paid, balance_before, balance_after) "
+        "VALUES ($1, $2, $3, 'M-Pesa', $4, $5, $6, $7)",
+        pqxx::params{customerId, billId, payDate, code, amount, balanceBefore, balanceAfter}
+    );
+
+    applyPaymentToBill(txn, billId, customerId, amount);
+
+    txn.commit();
+}
+
+// ============================================================
+//  FUNCTION: payByMpesaTill   (THE CLI WRAPPER)
+//
+//  Notice the instructions panel only shows the Till Number —
+//  no "Account No." line, since Till payments don't have one.
+// ============================================================
+void payByMpesaTill() {
+    cout << "\n--- Pay via M-Pesa Till Number ---\n";
+
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
+
+    try {
+        pqxx::work txn(getConnection());
+
+        pqxx::result custResult = txn.exec(
+            "SELECT name, balance FROM customers WHERE id = $1",
+            pqxx::params{customerId}
+        );
+        if (custResult.empty()) { cout << "  ✘ Customer not found.\n"; return; }
+
+        string custName = custResult[0]["name"].as<string>();
+
+        cout << "\n  " << custName << "  |  Balance: KES "
+             << fixed << setprecision(2) << custResult[0]["balance"].as<double>()
+             << "\n\n  Unpaid Bills:\n";
+
+        pqxx::result unpaidBills = txn.exec(
+            "SELECT id, issue_date, total_amount, amount_paid "
+            "FROM bills WHERE customer_id = $1 AND paid = false ORDER BY issue_date",
+            pqxx::params{customerId}
+        );
+        txn.commit();
+
+        if (unpaidBills.empty()) { cout << "  ✔ No unpaid bills!\n"; return; }
+
+        cout << "  " << left
+             << setw(38) << "Bill ID" << setw(14) << "Issued"
+             << setw(14) << "Total(KES)" << "Remaining\n";
+        cout << "  " << string(98, '-') << "\n";
+        for (const auto& row : unpaidBills) {
+            double total = row["total_amount"].as<double>();
+            double paid  = row["amount_paid"].as<double>();
+            cout << "  " << left
+                 << setw(38) << row["id"].as<string>()
+                 << setw(14) << row["issue_date"].as<string>()
+                 << setw(14) << fixed << setprecision(2) << total
+                 << (total - paid) << "\n";
+        }
+
+        string billId;
+        cout << "\n  Enter Bill ID to pay: ";
+        cin >> billId;
+
+        cout << "\n";
+        cout << " \n";
+        cout << " PAY VIA M-PESA TILL — BUY GOODS    \n";
+        cout << " \n";
+        cout << "  Go to M-Pesa > Lipa na M-Pesa > Buy Goods\n";
+        cout << "  Till Number  : " << MPESA_TILL_NUMBER << "\n";
+        cout << " \n";
+
+        string code;
+        bool gotValidFormat = false;
+        while (!gotValidFormat) {
+            cout << "\n  M-Pesa Transaction Code (or 0 to cancel): ";
+            cin >> code;
+            if (code == "0") { cout << "  Cancelled.\n"; return; }
+            for (auto& ch : code) ch = toupper(ch);
+            if (!isValidMpesaCode(code)) {
+                cout << "  ✘ Invalid format. Must be 10 letters/digits (e.g. QGR7XYZ123).\n";
+                continue;
+            }
+            gotValidFormat = true;
+        }
+
+        double amount;
+        cout << "  Confirm Amount Paid (KES): ";
+        cin >> amount;
+
+        string payDate;
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "  Date (YYYY-MM-DD): ";
+        getline(cin, payDate);
+
+        payByTillLogic(customerId, billId, code, amount, payDate);
+
+        cout << "\n  ✔ M-Pesa Till payment recorded — Code: " << code << "\n";
+        cout << "  Amount: KES " << fixed << setprecision(2) << amount << "\n";
+
+    } catch (const pqxx::unique_violation& e) {
+        cerr << "  ✘ This M-Pesa code has already been used. Please check and re-enter.\n";
+    } catch (const exception& e) {
+        cerr << "  ✘ " << e.what() << "\n";
+    }
+}
+
 void viewPaymentHistory() {
     cout << "\n--- Payment History ---\n";
 

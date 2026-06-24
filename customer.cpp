@@ -102,7 +102,44 @@ void registerCustomer() {
         cerr << "  ✘ Registration failed: " << e.what() << "\n";
     }
 }
+// deletecustomerlogic function
+void deleteCustomerLogic(const string& customerId){
+  pqxx::work txn(getConnection());
+  pqxx::result check = txn.exec("SELECT id FROM customers WHERE id = $1", pqxx::params{customerId});
 
+  if (check.empty()){
+    throw runtime_error("Customer not found");
+  }
+  txn.exec("DELETE FROM customers WHERE id = $1", pqxx::params{customerId});
+
+  txn.commit();
+}
+
+//deletecustomer function
+void deleteCustomer() {
+    cout << "\n--- Delete Customer ---\n";
+ 
+    string customerId;
+    cout << "  Customer ID (paste UUID): ";
+    cin >> customerId;
+ 
+    cout << "  This will permanently delete this customer AND all their\n";
+    cout << "  usage records, bills, and payments. Type YES to confirm: ";
+    string confirm;
+    cin >> confirm;
+ 
+    if (confirm != "YES") {
+        cout << "  Cancelled.\n";
+        return;
+    }
+ 
+    try {
+        deleteCustomerLogic(customerId);
+        cout << "  ✔ Customer deleted.\n";
+    } catch (const exception& e) {
+        cerr << "  ✘ " << e.what() << "\n";
+    }
+}
 
 //  BEFORE: looped through the vector with a for-range loop.
 //  NOW: runs a SELECT, then loops through the RESULT SET —

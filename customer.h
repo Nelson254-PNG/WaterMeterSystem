@@ -20,6 +20,9 @@ struct NewCustomerResult {
 };
 NewCustomerResult registerCustomerLogic(const string& name, const string& phone, double openingReading);
 
+void deleteCustomerLogic(const string& customerID);
+
 void registerCustomer();
 void listCustomers();
 void searchCustomerByName();
+void deleteCustomer();

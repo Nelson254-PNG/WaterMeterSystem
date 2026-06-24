@@ -1,4 +1,19 @@
+// ============================================================
+//  customer_routes.cpp
 //  HTTP handlers for customer-related endpoints.
+//
+//  THE PATTERN FOR EVERY HANDLER:
+//    1. Parse the incoming JSON body
+//    2. Validate the basics (is a required field missing?)
+//    3. Call the existing worker function from customer.cpp
+//    4. Build a JSON response, set the right HTTP status code
+//    5. Catch exceptions, turn them into error responses
+//
+//  Nothing here talks to the database directly — that's all
+//  still inside customer.cpp. This file is ONLY about
+//  translating HTTP <-> your existing C++ functions.
+// ============================================================
+
 #include "customer_routes.h"
 #include "customer.h"
 #include "db.h"
@@ -7,8 +22,14 @@ using namespace std;
 
 void registerCustomerRoutes(crow::SimpleApp& app) {
 
-    //  POST /customers details
-    
+    // ========================================================
+    //  POST /customers
+    //  Body: { "name": "...", "phone": "...", "openingReading": 0 }
+    //
+    //  THIS REPLACES registerCustomer()'s interactive prompts.
+    //  Instead of cin >> reading the terminal, we read the
+    //  SAME three values out of a JSON request body.
+    // ========================================================
     CROW_ROUTE(app, "/customers").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req) {
 
@@ -54,8 +75,14 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
         }
     });
 
+    // ========================================================
     //  GET /customers
-    
+    //  Returns every customer as a JSON array.
+    //
+    //  THIS REPLACES listCustomers()'s cout table-printing —
+    //  same underlying SELECT, just returned as JSON instead
+    //  of formatted text.
+    // ========================================================
     CROW_ROUTE(app, "/customers").methods(crow::HTTPMethod::Get)
     ([]() {
         try {
@@ -93,8 +120,36 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
         }
     });
 
+    // ========================================================
+    //  DELETE /customers/<id>
+    //  Deletes a customer and everything linked to them
+    //  (cascading via the schema's foreign keys).
+    // ========================================================
+    CROW_ROUTE(app, "/customers/<string>").methods(crow::HTTPMethod::Delete)
+    ([](const string& customerId) {
+        try {
+            deleteCustomerLogic(customerId);
+
+            crow::json::wvalue response;
+            response["status"] = "deleted";
+            response["id"]     = customerId;
+            return crow::response(200, response);
+
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+
+            string msg = e.what();
+            int status = (msg.find("not found") != string::npos) ? 404 : 500;
+            return crow::response(status, err);
+        }
+    });
+
+    // ========================================================
     //  GET /customers/search?name=...
-    
+    //  Query parameters, not a JSON body — common pattern for
+    //  GET requests since GET requests don't usually have bodies.
+    // ========================================================
     CROW_ROUTE(app, "/customers/search")
     ([](const crow::request& req) {
         auto query = req.url_params.get("name");
