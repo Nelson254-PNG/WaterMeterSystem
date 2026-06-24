@@ -24,8 +24,8 @@ int main() {
     registerBillingRoutes(app);
     registerPaymentRoutes(app);
 
-    cout << "API server starting on http://localhost:8081\n";
-    app.port(8081).run();
+    cout << "API server starting on http://localhost:8090\n";
+    app.port(8090).run();
 
     disconnectDB();
     return 0;
