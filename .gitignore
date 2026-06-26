@@ -1,2 +1,9 @@
 /.history
-/.db.cpp
+/db.cpp
+/jwt_test.cpp
+/jwt_test.exe
+/api_main.exe
+/create_admin_hash.cpp
+/create_admin_hash.exe
+/WaterMeter
+/WaterMeterSystem.exe

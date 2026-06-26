@@ -1,7 +1,14 @@
+// ============================================================
+//  api_main.cpp
+//  Entry point for the API SERVER (separate from your CLI's
+//  main.cpp, so you can still run the CLI for testing/demo
+//  purposes independently).
+// ============================================================
 
 #define ASIO_STANDALONE
 #include "crow_all.h"
 #include "db.h"
+#include "auth_routes.h"
 #include "customer_routes.h"
 #include "usage_routes.h"
 #include "billing_routes.h"
@@ -17,8 +24,7 @@ int main() {
 
     crow::SimpleApp app;
 
-    // Each module registers its own routes onto the same app.
-    // main.cpp stays small — it's just wiring, not logic.
+    registerAuthRoutes(app);
     registerCustomerRoutes(app);
     registerUsageRoutes(app);
     registerBillingRoutes(app);
