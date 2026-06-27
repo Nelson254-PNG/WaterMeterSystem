@@ -12,7 +12,7 @@ TierBreakdown calculateTieredCost(double units) {
     TierBreakdown b{};   
     double rem = units;
 
-    if (rem > 0) { b.tier1Units = min(rem, TIER1_LIMIT);               rem -= b.tier1Units; }
+    if (rem > 0) { b.tier1Units = min(rem, TIER1_LIMIT); rem -= b.tier1Units; }
     if (rem > 0) { b.tier2Units = min(rem, TIER2_LIMIT - TIER1_LIMIT); rem -= b.tier2Units; }
     if (rem > 0) { b.tier3Units = min(rem, TIER3_LIMIT - TIER2_LIMIT); rem -= b.tier3Units; }
     if (rem > 0) { b.tier4Units = rem; }

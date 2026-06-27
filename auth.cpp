@@ -170,10 +170,18 @@ AuthResult customerSignupLogic(const string& name, const string& phone,
         throw runtime_error("An account with this email already exists");
     }
 
-    // Generate meter number the same way registerCustomerLogic() does
-    pqxx::result countResult = txn.exec("SELECT COUNT(*) FROM customers");
-    int count = countResult[0][0].as<int>();
-    string padded = to_string(count + 1);
+    // Generate meter number the SAME way generateMeterNumber()
+    // in customer.cpp does — based on the highest existing
+    // numeric suffix, not a row count. Using COUNT(*) here
+    // (as an earlier version did) caused exactly the collision
+    // bug seen in testing: after any customer is deleted, a
+    // new signup could generate an already-used meter number.
+    pqxx::result maxResult = txn.exec(
+        "SELECT COALESCE(MAX(CAST(SUBSTRING(meter_number FROM 5) AS INTEGER)), 0) "
+        "FROM customers"
+    );
+    int highestNumber = maxResult[0][0].as<int>();
+    string padded = to_string(highestNumber + 1);
     while (padded.length() < 3) padded = "0" + padded;
     string meterNumber = "MTR-" + padded;
 
