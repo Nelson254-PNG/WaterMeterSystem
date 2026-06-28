@@ -17,6 +17,7 @@
 #include "customer_routes.h"
 #include "customer.h"
 #include "db.h"
+#include "auth.h"
 #include <iostream>
 using namespace std;
 
@@ -32,6 +33,19 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
     // ========================================================
     CROW_ROUTE(app, "/customers").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req) {
+
+        // ── AUTH CHECK ───────────────────────────────────────
+        // Only admins create customers via this admin-facing
+        // route. (Customers create THEMSELVES via /auth/signup,
+        // which is a separate, unprotected route on purpose.)
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireAdmin(payload);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
 
         // Parse the request body as JSON. If the body isn't
         // valid JSON at all, crow::json::load returns an
@@ -84,7 +98,20 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
     //  of formatted text.
     // ========================================================
     CROW_ROUTE(app, "/customers").methods(crow::HTTPMethod::Get)
-    ([]() {
+    ([](const crow::request& req) {
+
+        // ── AUTH CHECK ───────────────────────────────────────
+        // Listing EVERY customer is an admin-only capability —
+        // a logged-in customer should never see the full roster.
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireAdmin(payload);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
         try {
             pqxx::work txn(getConnection());
             pqxx::result r = txn.exec(
@@ -126,7 +153,21 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
     //  (cascading via the schema's foreign keys).
     // ========================================================
     CROW_ROUTE(app, "/customers/<string>").methods(crow::HTTPMethod::Delete)
-    ([](const string& customerId) {
+    ([](const crow::request& req, const string& customerId) {
+
+        // ── AUTH CHECK ───────────────────────────────────────
+        // Deleting a customer is destructive and admin-only —
+        // no customer should ever be able to delete themselves
+        // or anyone else through this route.
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireAdmin(payload);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
         try {
             deleteCustomerLogic(customerId);
 
@@ -146,12 +187,73 @@ void registerCustomerRoutes(crow::SimpleApp& app) {
     });
 
     // ========================================================
+    //  GET /customers/<id>
+    //  Fetch ONE customer's own profile. This is what the
+    //  CUSTOMER-FACING app uses — a customer can fetch their
+    //  own record, an admin can fetch anyone's.
+    // ========================================================
+    CROW_ROUTE(app, "/customers/<string>").methods(crow::HTTPMethod::Get)
+    ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
+        try {
+            pqxx::work txn(getConnection());
+            pqxx::result r = txn.exec(
+                "SELECT id, name, meter_number, phone, last_reading, balance "
+                "FROM customers WHERE id = $1",
+                pqxx::params{customerId}
+            );
+            txn.commit();
+
+            if (r.empty()) {
+                crow::json::wvalue err;
+                err["error"] = "Customer not found";
+                return crow::response(404, err);
+            }
+
+            crow::json::wvalue c;
+            c["id"]          = r[0]["id"].as<string>();
+            c["name"]        = r[0]["name"].as<string>();
+            c["meterNumber"] = r[0]["meter_number"].as<string>();
+            c["phone"]       = r[0]["phone"].as<string>();
+            c["lastReading"] = r[0]["last_reading"].as<double>();
+            c["balance"]     = r[0]["balance"].as<double>();
+            return crow::response(200, c);
+
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(500, err);
+        }
+    });
+
+    // ========================================================
     //  GET /customers/search?name=...
     //  Query parameters, not a JSON body — common pattern for
     //  GET requests since GET requests don't usually have bodies.
     // ========================================================
     CROW_ROUTE(app, "/customers/search")
     ([](const crow::request& req) {
+
+        // ── AUTH CHECK ───────────────────────────────────────
+        // Searching across ALL customers is an admin capability.
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireAdmin(payload);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
         auto query = req.url_params.get("name");
         if (!query) {
             crow::json::wvalue err;

@@ -1,12 +1,15 @@
 // ============================================================
 //  payment_routes.cpp
 //  HTTP handlers for payment endpoints — both generic
-//  (Cash/Bank) and M-Pesa Paybill.
+//  (Cash/Bank) and M-Pesa Paybill/Till.
+//  ALL routes here are OWNER-OR-ADMIN: a customer can pay
+//  and view THEIR OWN bills/history; admins can act on anyone's.
 // ============================================================
 
 #include "payment_routes.h"
 #include "payment.h"
 #include "db.h"
+#include "auth.h"
 #include <iostream>
 using namespace std;
 
@@ -14,14 +17,18 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
 
     // ========================================================
     //  POST /customers/<id>/payments
-    //  Body: {
-    //    "billId": "...", "method": "Cash", "reference": "N/A",
-    //    "amount": 500, "date": "2026-06-21"
-    //  }
-    //  Generic payment — Cash, Bank Transfer, or Other.
     // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
 
         auto body = crow::json::load(req.body);
         if (!body || !body.has("billId") || !body.has("method") ||
@@ -58,18 +65,18 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
 
     // ========================================================
     //  POST /customers/<id>/payments/mpesa
-    //  Body: { "billId": "...", "code": "QGR7XYZ123", "amount": 500, "date": "..." }
-    //
-    //  THE KEY DIFFERENCE: we catch pqxx::unique_violation
-    //  SPECIFICALLY and return HTTP 409 Conflict — the correct
-    //  status code for "this resource already exists / this
-    //  action conflicts with existing data." A generic 400
-    //  would be technically wrong; 409 tells the mobile app
-    //  exactly what kind of problem this is, so it can show
-    //  a specific "code already used" message to the user.
     // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments/mpesa").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
 
         auto body = crow::json::load(req.body);
         if (!body || !body.has("billId") || !body.has("code") ||
@@ -113,16 +120,18 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
 
     // ========================================================
     //  POST /customers/<id>/payments/mpesa-till
-    //  Body: { "billId": "...", "code": "QGR7XYZ123", "amount": 500, "date": "..." }
-    //
-    //  Same shape and same 409-on-duplicate behavior as the
-    //  Paybill route above — the only difference is which
-    //  worker function it calls. The mobile app is responsible
-    //  for showing the right instructions (Till Number only,
-    //  no account number) before the user gets here.
     // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments/mpesa-till").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
 
         auto body = crow::json::load(req.body);
         if (!body || !body.has("billId") || !body.has("code") ||
@@ -166,7 +175,17 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
     //  Full payment history for one customer.
     // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments").methods(crow::HTTPMethod::Get)
-    ([](const string& customerId) {
+    ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
         try {
             pqxx::work txn(getConnection());
 

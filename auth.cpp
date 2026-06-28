@@ -240,9 +240,36 @@ AuthResult customerLoginLogic(const string& email, const string& password) {
 }
 
 // ============================================================
-//  FUNCTION: adminLoginLogic
-//  Same pattern, against the SEPARATE admin_users table.
+//  FUNCTION: requireOwnerOrAdmin
+//
+//  THE CORE AUTHORIZATION RULE for customer-scoped routes:
+//  - If the caller is an admin, always allow (admins manage
+//    everyone).
+//  - If the caller is a customer, only allow if their OWN
+//    userId matches the customerId in the URL they're trying
+//    to access.
+//  - Anything else (a customer trying to access someone else's
+//    data) is rejected.
 // ============================================================
+void requireOwnerOrAdmin(const TokenPayload& payload, const string& customerId) {
+    if (payload.role == "admin") {
+        return;   // admins can access any customer's data
+    }
+    if (payload.role == "customer" && payload.userId == customerId) {
+        return;   // customers can access their OWN data
+    }
+    throw runtime_error("Forbidden: you do not have access to this customer's data");
+}
+
+// ============================================================
+//  FUNCTION: requireAdmin
+//  For actions ONLY admins should ever perform.
+// ============================================================
+void requireAdmin(const TokenPayload& payload) {
+    if (payload.role != "admin") {
+        throw runtime_error("Forbidden: admin access required");
+    }
+}
 AuthResult adminLoginLogic(const string& username, const string& password) {
     pqxx::work txn(getConnection());
 

@@ -1,7 +1,12 @@
+// ============================================================
+//  billing_routes.cpp
 //  HTTP handlers for bill generation and viewing.
+// ============================================================
+
 #include "billing_routes.h"
 #include "billing.h"
 #include "db.h"
+#include "auth.h"
 #include <iostream>
 using namespace std;
 
@@ -20,10 +25,24 @@ static crow::json::wvalue tierBreakdownToJson(const TierBreakdown& tb) {
 
 void registerBillingRoutes(crow::SimpleApp& app) {
 
+    // ========================================================
     //  POST /customers/<id>/bills
-  
+    //  Body: { "issueDate": "2026-06-21", "dueDate": "2026-07-05" }
+    //
+    //  ADMIN-ONLY: generating a bill is a billing/admin action,
+    //  not something a customer should trigger themselves.
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/bills").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireAdmin(payload);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
 
         auto body = crow::json::load(req.body);
         if (!body || !body.has("issueDate") || !body.has("dueDate")) {
@@ -54,10 +73,25 @@ void registerBillingRoutes(crow::SimpleApp& app) {
             return crow::response(status, err);
         }
     });
-        
+
+    // ========================================================
+    //  GET /customers/<id>/bills
     //  Returns all bills for one customer, plus their balance.
+    //
+    //  OWNER-OR-ADMIN: a customer views their OWN bills.
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/bills").methods(crow::HTTPMethod::Get)
-    ([](const string& customerId) {
+    ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
         try {
             pqxx::work txn(getConnection());
 

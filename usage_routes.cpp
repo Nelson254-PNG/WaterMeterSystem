@@ -1,22 +1,35 @@
-
+// ============================================================
+//  usage_routes.cpp
+//  HTTP handlers for water usage endpoints.
+// ============================================================
 
 #include "usage_routes.h"
 #include "usage.h"
 #include "db.h"
+#include "auth.h"
 #include <iostream>
 using namespace std;
 
 void registerUsageRoutes(crow::SimpleApp& app) {
 
-   
-    //  Notice the customer ID is in the URL PATH this time,
-    //  not the JSON body — this is a common REST convention:
-    //  "usage records belonging to THIS specific customer."
-    //  Crow lets us capture path segments with <string> in
-    //  the route pattern.
-    
+    // ========================================================
+    //  POST /customers/<id>/usage
+    //  Body: { "currentReading": 135.5, "date": "2026-06-21" }
+    //
+    //  ADMIN-ONLY: per the design decision, only admin/meter
+    //  readers record usage — customers can view but not record.
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/usage").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireAdmin(payload);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
 
         auto body = crow::json::load(req.body);
         if (!body || !body.has("currentReading") || !body.has("date")) {
@@ -52,10 +65,25 @@ void registerUsageRoutes(crow::SimpleApp& app) {
         }
     });
 
+    // ========================================================
+    //  GET /customers/<id>/usage
     //  Returns the full usage history for one customer.
-   
+    //
+    //  OWNER-OR-ADMIN: a customer can view their OWN usage
+    //  history; admins can view anyone's.
+    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/usage").methods(crow::HTTPMethod::Get)
-    ([](const string& customerId) {
+    ([](const crow::request& req, const string& customerId) {
+
+        try {
+            TokenPayload payload = requireAuth(req);
+            requireOwnerOrAdmin(payload, customerId);
+        } catch (const exception& e) {
+            crow::json::wvalue err;
+            err["error"] = e.what();
+            return crow::response(401, err);
+        }
+
         try {
             pqxx::work txn(getConnection());
 

@@ -7,6 +7,7 @@
 // ============================================================
 
 #include <string>
+#include <stdexcept>   
 using namespace std;
 
 // ── PASSWORD HASHING ───────────────────────────────────────────
@@ -56,3 +57,42 @@ AuthResult customerSignupLogic(const string& name, const string& phone,
 AuthResult customerLoginLogic(const string& email, const string& password);
 
 AuthResult adminLoginLogic(const string& username, const string& password);
+
+// ── ROUTE PROTECTION HELPERS ───────────────────────────────────
+// These are called at the TOP of every protected route handler.
+
+// Extracts and verifies the token from a Crow request's
+// Authorization header (expected format: "Bearer <token>").
+// Throws runtime_error with a clear message if missing/invalid —
+// the route's catch block turns that into a 401 response.
+//
+// We can't include crow_all.h here without dragging Crow into
+// every file that includes auth.h, so this is declared as a
+// template taking any object with a get_header_value(string)
+// method — crow::request satisfies this without us needing
+// to name its exact type.
+template <typename RequestType>
+TokenPayload requireAuth(const RequestType& req) {
+    string authHeader = req.get_header_value("Authorization");
+
+    const string prefix = "Bearer ";
+    if (authHeader.size() <= prefix.size() || authHeader.substr(0, prefix.size()) != prefix) {
+        throw runtime_error("Missing or malformed Authorization header");
+    }
+
+    string token = authHeader.substr(prefix.size());
+    return verifyToken(token);   // throws if invalid/expired
+}
+
+// Checks that the authenticated caller is EITHER an admin
+// (who can act on any customer) OR a customer acting on
+// THEIR OWN customerId. Throws if neither is true.
+//
+// This is the core rule that stops customer A from viewing
+// or modifying customer B's data just by changing the UUID
+// in the URL.
+void requireOwnerOrAdmin(const TokenPayload& payload, const string& customerId);
+
+// Checks the caller is specifically an admin — used for
+// admin-only actions like deleting a customer.
+void requireAdmin(const TokenPayload& payload);
