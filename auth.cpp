@@ -1,29 +1,8 @@
-// ============================================================
-//  auth.cpp
-// ============================================================
-
 #include "auth.h"
 #include "db.h"
-
-// ── WINDOWS "byte" AMBIGUITY FIX ──────────────────────────────
-// jwt-cpp's jwt.h includes OpenSSL's ssl.h, which transitively
-// drags in windows.h. windows.h's rpcndr.h declares its own
-// plain "byte" typedef (unsigned char). Meanwhile auth.h already
-// included <string>, which pulls in <cstddef> and its C++17
-// "std::byte" enum. With "using namespace std;" active, the
-// bare word "byte" becomes ambiguous between ::byte and
-// std::byte the moment windows.h loads — a well-known, specific
-// Windows SDK problem unrelated to our own code's correctness.
-//
-// THE FIX: temporarily rename windows.h's "byte" to a harmless
-// identifier BEFORE it gets defined, then restore normal "byte"
-// usage immediately after. This is the standard workaround used
-// across many real C++/Windows projects that hit this exact
-// issue (Qt, Mozilla, and others have all documented it).
 #define byte win_byte_override
 #include <windows.h>
 #undef byte
-
 #define JWT_DISABLE_PICOJSON
 #include "jwt-cpp/jwt.h"
 #include "jwt-cpp/traits/kazuho-picojson/traits.h"
@@ -35,23 +14,8 @@
 #include <stdexcept>
 using namespace std;
 
-// ============================================================
-//  SECRET KEY — used to SIGN every token.
-//
-//  CRITICAL: anyone who has this string can forge valid tokens
-//  for ANY user. In a real production system this would come
-//  from an environment variable, never hardcoded in source
-//  control. For this portfolio project, keep it here but
-//  understand this is the #1 thing to change before any real
-//  deployment.
-// ============================================================
 static const string JWT_SECRET = "change-this-to-a-long-random-string-before-deploying";
 
-// ============================================================
-//  HELPER: bytesToHex
-//  Converts raw binary hash bytes into a readable hex string
-//  for storage, e.g. {0xAB, 0x3F} -> "ab3f"
-// ============================================================
 static string bytesToHex(const unsigned char* data, size_t len) {
     ostringstream oss;
     for (size_t i = 0; i < len; i++) {
@@ -60,16 +24,6 @@ static string bytesToHex(const unsigned char* data, size_t len) {
     return oss.str();
 }
 
-// ============================================================
-//  FUNCTION: hashPassword
-//
-//  1. Generate a random 16-byte salt (RAND_bytes — OpenSSL's
-//     cryptographically secure random generator, NOT rand()
-//     which is predictable and unsafe for security purposes)
-//  2. Hash (salt + password) together with SHA-256
-//  3. Store as "saltHex:hashHex" so verifyPassword() can later
-//     reconstruct the exact same salt for comparison
-// ============================================================
 string hashPassword(const string& plainPassword) {
     unsigned char salt[16];
     if (RAND_bytes(salt, sizeof(salt)) != 1) {
@@ -86,11 +40,7 @@ string hashPassword(const string& plainPassword) {
     return saltHex + ":" + hashHex;
 }
 
-// ============================================================
-//  FUNCTION: verifyPassword
-//  Splits the stored "salt:hash" back apart, re-hashes the
-//  CANDIDATE password with that same salt, and compares.
-// ============================================================
+
 bool verifyPassword(const string& plainPassword, const string& storedHash) {
     size_t sep = storedHash.find(':');
     if (sep == string::npos) return false;
@@ -106,11 +56,6 @@ bool verifyPassword(const string& plainPassword, const string& storedHash) {
     return actualHashHex == expectedHashHex;
 }
 
-// ============================================================
-//  FUNCTION: createToken
-//  Embeds userId and role as claims, signs with HS256, sets
-//  a 7-day expiry — after that, the customer must log in again.
-// ============================================================
 string createToken(const string& userId, const string& role) {
     return jwt::create<jwt::traits::kazuho_picojson>()
         .set_type("JWT")
@@ -122,13 +67,6 @@ string createToken(const string& userId, const string& role) {
         .sign(jwt::algorithm::hs256{JWT_SECRET});
 }
 
-// ============================================================
-//  FUNCTION: verifyToken
-//  Decodes, checks the signature wasn't tampered with, checks
-//  it hasn't expired, then extracts the claims. Throws on any
-//  failure — the caller (route middleware) turns that into a
-//  401 Unauthorized response.
-// ============================================================
 TokenPayload verifyToken(const string& token) {
     auto decoded = jwt::decode<jwt::traits::kazuho_picojson>(token);
 
@@ -136,7 +74,7 @@ TokenPayload verifyToken(const string& token) {
         .with_issuer("watermeter-system")
         .allow_algorithm(jwt::algorithm::hs256{JWT_SECRET});
 
-    verifier.verify(decoded);   // throws jwt::error::token_verification_exception on failure
+    verifier.verify(decoded);   
 
     TokenPayload payload;
     payload.userId = decoded.get_payload_claim("userId").as_string();
@@ -144,24 +82,11 @@ TokenPayload verifyToken(const string& token) {
     return payload;
 }
 
-// ============================================================
-//  FUNCTION: customerSignupLogic
-//
-//  Creates a BRAND NEW customer record with login credentials.
-//  This is for self-service signup — the customer doesn't need
-//  to have been pre-registered by an admin first. We still
-//  assign a meter number the same way registerCustomerLogic()
-//  does in customer.cpp, so this customer behaves identically
-//  to an admin-created one everywhere else in the system.
-// ============================================================
+
 AuthResult customerSignupLogic(const string& name, const string& phone,
                                 const string& email, const string& password) {
     pqxx::work txn(getConnection());
 
-    // Check email isn't already taken — the UNIQUE constraint
-    // on customers.email would catch this anyway, but checking
-    // first lets us give a clear error message instead of a
-    // raw constraint-violation exception.
     pqxx::result existing = txn.exec(
         "SELECT id FROM customers WHERE email = $1",
         pqxx::params{email}
@@ -170,12 +95,6 @@ AuthResult customerSignupLogic(const string& name, const string& phone,
         throw runtime_error("An account with this email already exists");
     }
 
-    // Generate meter number the SAME way generateMeterNumber()
-    // in customer.cpp does — based on the highest existing
-    // numeric suffix, not a row count. Using COUNT(*) here
-    // (as an earlier version did) caused exactly the collision
-    // bug seen in testing: after any customer is deleted, a
-    // new signup could generate an already-used meter number.
     pqxx::result maxResult = txn.exec(
         "SELECT COALESCE(MAX(CAST(SUBSTRING(meter_number FROM 5) AS INTEGER)), 0) "
         "FROM customers"
@@ -204,9 +123,6 @@ AuthResult customerSignupLogic(const string& name, const string& phone,
     return result;
 }
 
-// ============================================================
-//  FUNCTION: customerLoginLogic
-// ============================================================
 AuthResult customerLoginLogic(const string& email, const string& password) {
     pqxx::work txn(getConnection());
 
@@ -217,11 +133,7 @@ AuthResult customerLoginLogic(const string& email, const string& password) {
     txn.commit();
 
     if (r.empty()) {
-        // Deliberately the SAME error message as "wrong password"
-        // below — never reveal whether an email exists in your
-        // system to an unauthenticated caller. This is a real
-        // security practice: distinguishing "no such user" from
-        // "wrong password" helps attackers enumerate valid emails.
+      
         throw runtime_error("Invalid email or password");
     }
 
@@ -239,32 +151,16 @@ AuthResult customerLoginLogic(const string& email, const string& password) {
     return result;
 }
 
-// ============================================================
-//  FUNCTION: requireOwnerOrAdmin
-//
-//  THE CORE AUTHORIZATION RULE for customer-scoped routes:
-//  - If the caller is an admin, always allow (admins manage
-//    everyone).
-//  - If the caller is a customer, only allow if their OWN
-//    userId matches the customerId in the URL they're trying
-//    to access.
-//  - Anything else (a customer trying to access someone else's
-//    data) is rejected.
-// ============================================================
 void requireOwnerOrAdmin(const TokenPayload& payload, const string& customerId) {
     if (payload.role == "admin") {
-        return;   // admins can access any customer's data
+        return;   
     }
     if (payload.role == "customer" && payload.userId == customerId) {
-        return;   // customers can access their OWN data
+        return;   
     }
     throw runtime_error("Forbidden: you do not have access to this customer's data");
 }
 
-// ============================================================
-//  FUNCTION: requireAdmin
-//  For actions ONLY admins should ever perform.
-// ============================================================
 void requireAdmin(const TokenPayload& payload) {
     if (payload.role != "admin") {
         throw runtime_error("Forbidden: admin access required");

@@ -1,10 +1,3 @@
-// ============================================================
-//  auth_routes.cpp
-//  HTTP handlers for signup and login. These are the ONLY
-//  routes that don't require a token — everything else will
-//  require one once we add the protection middleware next.
-// ============================================================
-
 #include "auth_routes.h"
 #include "auth.h"
 #include <iostream>
@@ -12,11 +5,6 @@ using namespace std;
 
 void registerAuthRoutes(crow::SimpleApp& app) {
 
-    // ========================================================
-    //  POST /auth/signup
-    //  Body: { "name": "...", "phone": "...", "email": "...", "password": "..." }
-    //  Creates a brand new customer with login credentials.
-    // ========================================================
     CROW_ROUTE(app, "/auth/signup").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req) {
 
@@ -51,19 +39,14 @@ void registerAuthRoutes(crow::SimpleApp& app) {
         } catch (const exception& e) {
             crow::json::wvalue err;
             err["error"] = e.what();
-            // "already exists" is a 409 Conflict; anything else
-            // we treat as a 400 Bad Request from the caller.
+           
             string msg = e.what();
             int status = (msg.find("already exists") != string::npos) ? 409 : 400;
             return crow::response(status, err);
         }
     });
 
-    // ========================================================
-    //  POST /auth/login
-    //  Body: { "email": "...", "password": "..." }
-    //  For CUSTOMERS only — admins use /auth/admin-login below.
-    // ========================================================
+    
     CROW_ROUTE(app, "/auth/login").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req) {
 
@@ -89,18 +72,12 @@ void registerAuthRoutes(crow::SimpleApp& app) {
         } catch (const exception& e) {
             crow::json::wvalue err;
             err["error"] = e.what();
-            // Always 401 for login failures — never reveal WHY
-            // it failed beyond the generic message, to avoid
-            // helping an attacker enumerate valid accounts.
+           
             return crow::response(401, err);
         }
     });
 
-    // ========================================================
-    //  POST /auth/admin-login
-    //  Body: { "username": "...", "password": "..." }
-    //  Separate endpoint for staff/admin accounts.
-    // ========================================================
+   
     CROW_ROUTE(app, "/auth/admin-login").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req) {
 

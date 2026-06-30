@@ -1,9 +1,3 @@
-// ============================================================
-//  api_main.cpp
-//  Entry point for the API SERVER (separate from your CLI's
-//  main.cpp, so you can still run the CLI for testing/demo
-//  purposes independently).
-// ============================================================
 
 #define ASIO_STANDALONE
 #include "crow_all.h"
