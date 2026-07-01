@@ -1,14 +1,12 @@
-
-
 #include <iostream>
-using namespace std;
-
 #include "db.h"
 #include "customer.h"
 #include "usage.h"
 #include "billing.h"
 #include "payment.h"
 #include "reports.h"
+
+using namespace std;
 
 void displayMenu() {
     cout << "\n";
@@ -42,9 +40,7 @@ void displayMenu() {
 }
 
 int main() {
-    // Connect ONCE, when the app starts.
-    // If this fails, there's no point continuing —
-    // every other function depends on this connection existing.
+    
     if (!connectDB()) {
         cerr << "Could not start: database connection failed.\n";
         return 1;
@@ -74,7 +70,6 @@ int main() {
         }
     } while (choice != 0);
 
-    // Disconnect cleanly when the app exits
     disconnectDB();
     return 0;
 }

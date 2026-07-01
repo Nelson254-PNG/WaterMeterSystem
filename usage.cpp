@@ -1,5 +1,3 @@
-
-
 #include "usage.h"
 #include "db.h"
 #include <iostream>
@@ -43,9 +41,6 @@ double recordUsageLogic(const string& customerId, double currentReading, const s
     return unitsUsed;
 }
 
-
-//  Now just gathers input and reports the result/error —
-//  all database logic lives in recordUsageLogic().
 void recordUsage() {
     cout << "\n--- Record Water Usage ---\n";
 
@@ -70,10 +65,6 @@ void recordUsage() {
     }
 }
 
-//  NOW: we must explicitly filter with WHERE customer_id = $1
-//  — the database doesn't "know" which records belong to whom
-//  until we ask it directly.
-
 void viewUsageHistory() {
     cout << "\n--- Usage History ---\n";
 
@@ -83,7 +74,6 @@ void viewUsageHistory() {
 
     pqxx::work txn(getConnection());
 
-    // First confirm the customer exists and get their name for display
     pqxx::result custResult = txn.exec(
         "SELECT name FROM customers WHERE id = $1",
         pqxx::params{customerId}
@@ -96,8 +86,6 @@ void viewUsageHistory() {
 
     cout << "\n  Customer: " << custResult[0]["name"].as<string>() << "\n\n";
 
-    // ORDER BY reading_date keeps the history in chronological
-    // order, same as your vector naturally preserved insertion order
     pqxx::result records = txn.exec(
         "SELECT reading_date, previous_reading, current_reading, units_used, billed "
         "FROM water_records WHERE customer_id = $1 ORDER BY reading_date",

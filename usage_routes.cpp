@@ -1,8 +1,3 @@
-// ============================================================
-//  usage_routes.cpp
-//  HTTP handlers for water usage endpoints.
-// ============================================================
-
 #include "usage_routes.h"
 #include "usage.h"
 #include "db.h"
@@ -12,13 +7,6 @@ using namespace std;
 
 void registerUsageRoutes(crow::SimpleApp& app) {
 
-    // ========================================================
-    //  POST /customers/<id>/usage
-    //  Body: { "currentReading": 135.5, "date": "2026-06-21" }
-    //
-    //  ADMIN-ONLY: per the design decision, only admin/meter
-    //  readers record usage — customers can view but not record.
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/usage").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -53,9 +41,7 @@ void registerUsageRoutes(crow::SimpleApp& app) {
             return crow::response(201, response);
 
         } catch (const exception& e) {
-            // recordUsageLogic() throws for BOTH "not found" and
-            // "reading too low" — we use the message text itself
-            // to decide which HTTP status fits best.
+           
             crow::json::wvalue err;
             err["error"] = e.what();
 
@@ -65,13 +51,6 @@ void registerUsageRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
-    //  GET /customers/<id>/usage
-    //  Returns the full usage history for one customer.
-    //
-    //  OWNER-OR-ADMIN: a customer can view their OWN usage
-    //  history; admins can view anyone's.
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/usage").methods(crow::HTTPMethod::Get)
     ([](const crow::request& req, const string& customerId) {
 
