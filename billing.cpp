@@ -1,5 +1,3 @@
-
-//  Tiered cost calculation, bill generation, bill viewing.
 #include "billing.h"
 #include "db.h"
 #include "constants.h"
@@ -7,7 +5,7 @@
 #include <iomanip>
 using namespace std;
 
-//  FUNCTION: calculateTieredCost
+//  calculateTieredCost
 TierBreakdown calculateTieredCost(double units) {
     TierBreakdown b{};   
     double rem = units;
@@ -27,7 +25,7 @@ TierBreakdown calculateTieredCost(double units) {
     return b;
 }
 
-//  FUNCTION: generateBillLogic  
+//   generateBillLogic  
 GenerateBillResult generateBillLogic(const string& customerId, const string& issueDate, const string& dueDate) {
     pqxx::work txn(getConnection());
 
@@ -91,7 +89,7 @@ GenerateBillResult generateBillLogic(const string& customerId, const string& iss
     return result;
 }
 
-//  FUNCTION: generateBill  
+//  generateBill  
 void generateBill() {
     cout << "\n--- Generate Bill ---\n";
 
@@ -118,7 +116,7 @@ void generateBill() {
     }
 }
 
-//  FUNCTION: viewBills
+//  viewBills
 void viewBills() {
     cout << "\n--- Bills ---\n";
 

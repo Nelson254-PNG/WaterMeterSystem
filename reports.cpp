@@ -1,4 +1,3 @@
-
 #include "reports.h"
 #include "db.h"
 #include <iostream>
@@ -12,7 +11,7 @@ static void sep(int w = 60, char ch = '=') {
 
 void systemDashboard() {
     cout << "\n";
-    sep(); cout << "  ||     SYSTEM DASHBOARD                        ||\n"; sep();
+    sep(); cout << "SYSTEM DASHBOARD\n"; sep();
 
     pqxx::work txn(getConnection());
 
@@ -26,9 +25,6 @@ void systemDashboard() {
         return;
     }
 
-    // Water usage 
-    // COALESCE handles the case where there are zero rows,
-    // which would otherwise make SUM() return NULL
     pqxx::result usage = txn.exec(
         "SELECT COUNT(*) AS cnt, COALESCE(SUM(units_used), 0) AS total_units "
         "FROM water_records"
@@ -69,7 +65,6 @@ void systemDashboard() {
 
     txn.commit();
 
-    // Print — identical formatting to your CLI version 
     cout << fixed << setprecision(2);
     cout << "\n  CUSTOMERS\n";       sep(60, '-');
     cout << "  Total Registered    : " << totalCustomers << "\n";

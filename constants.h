@@ -3,7 +3,6 @@
 #include <string>
 
 const double SERVICE_CHARGE = 200.0;
-//limits
 const double TIER1_LIMIT = 6.0;
 const double TIER2_LIMIT = 20.0;
 const double TIER3_LIMIT = 50.0;

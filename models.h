@@ -14,7 +14,6 @@ struct WaterRecord {
   double unitsUsed;
   bool billed;
 };
-//BILLS
 struct Bill {
   int billId;
   string issueDate;

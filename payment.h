@@ -1,5 +1,4 @@
 #pragma once
-
 #include <string>
 using namespace std;
 
@@ -11,19 +10,12 @@ void payByMpesaPaybill();
 
 void payByMpesaTill();
 
-
-// Generic payment (Cash/Bank/Other). Returns nothing — caller
-// already knows the amount and method; nothing new to report
-// besides success/failure, which is conveyed via exception.
 void makePaymentLogic(const string& customerId, const string& billId,
-                      const string& method, const string& reference,
-                      double amount, const string& payDate);
+  const string& method, const string& reference,
+  double amount, const string& payDate);
 
-// M-Pesa payment. Validates format, relies on the database's
-// unique index for duplicate detection (throws pqxx::unique_violation
-// if the code was already used).
 void payByMpesaLogic(const string& customerId, const string& billId,
-                     const string& code, double amount, const string& payDate);
-//MPESA PAYMENNT VIA TILL NUMBER
+  const string& code, double amount, const string& payDate);
+
 void payByTillLogic(const string& customerId, const string& billId,
-                     const string& code, double amount, const string& payDate);                     
+  const string& code, double amount, const string& payDate);                     

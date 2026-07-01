@@ -1,8 +1,3 @@
-// ============================================================
-//  billing_routes.cpp
-//  HTTP handlers for bill generation and viewing.
-// ============================================================
-
 #include "billing_routes.h"
 #include "billing.h"
 #include "db.h"
@@ -10,8 +5,6 @@
 #include <iostream>
 using namespace std;
 
-// Helper to convert a TierBreakdown into JSON — reused by
-// both routes below so we don't repeat the same 9 lines twice.
 static crow::json::wvalue tierBreakdownToJson(const TierBreakdown& tb) {
     crow::json::wvalue j;
     j["tier1Units"] = tb.tier1Units; j["tier1Cost"] = tb.tier1Cost;
@@ -25,13 +18,6 @@ static crow::json::wvalue tierBreakdownToJson(const TierBreakdown& tb) {
 
 void registerBillingRoutes(crow::SimpleApp& app) {
 
-    // ========================================================
-    //  POST /customers/<id>/bills
-    //  Body: { "issueDate": "2026-06-21", "dueDate": "2026-07-05" }
-    //
-    //  ADMIN-ONLY: generating a bill is a billing/admin action,
-    //  not something a customer should trigger themselves.
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/bills").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -74,12 +60,6 @@ void registerBillingRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
-    //  GET /customers/<id>/bills
-    //  Returns all bills for one customer, plus their balance.
-    //
-    //  OWNER-OR-ADMIN: a customer views their OWN bills.
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/bills").methods(crow::HTTPMethod::Get)
     ([](const crow::request& req, const string& customerId) {
 

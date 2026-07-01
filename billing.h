@@ -1,6 +1,4 @@
 #pragma once
-
-//  Declarations for bill generation functions.
 #include <string>
 using namespace std;
 
@@ -12,9 +10,6 @@ struct TierBreakdown {
 };
 
 TierBreakdown calculateTieredCost(double units);
-
-// Holds both the new bill's ID and its cost breakdown, since
-// the caller (CLI or API) needs both to report back fully.
 struct GenerateBillResult {
     string billId;
     double totalUnits;

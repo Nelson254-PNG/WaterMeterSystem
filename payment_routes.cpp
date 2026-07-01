@@ -1,11 +1,3 @@
-// ============================================================
-//  payment_routes.cpp
-//  HTTP handlers for payment endpoints — both generic
-//  (Cash/Bank) and M-Pesa Paybill/Till.
-//  ALL routes here are OWNER-OR-ADMIN: a customer can pay
-//  and view THEIR OWN bills/history; admins can act on anyone's.
-// ============================================================
-
 #include "payment_routes.h"
 #include "payment.h"
 #include "db.h"
@@ -14,10 +6,6 @@
 using namespace std;
 
 void registerPaymentRoutes(crow::SimpleApp& app) {
-
-    // ========================================================
-    //  POST /customers/<id>/payments
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -63,9 +51,6 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
-    //  POST /customers/<id>/payments/mpesa
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments/mpesa").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -101,12 +86,10 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
             return crow::response(201, response);
 
         } catch (const pqxx::unique_violation& e) {
-            // THIS catch block must come BEFORE the generic
-            // exception catch below — C++ checks catch blocks
-            // top to bottom, most specific first.
+           
             crow::json::wvalue err;
             err["error"] = "This M-Pesa code has already been used";
-            return crow::response(409, err);   // 409 = Conflict
+            return crow::response(409, err);   
 
         } catch (const exception& e) {
             crow::json::wvalue err;
@@ -118,9 +101,6 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
-    //  POST /customers/<id>/payments/mpesa-till
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments/mpesa-till").methods(crow::HTTPMethod::Post)
     ([](const crow::request& req, const string& customerId) {
 
@@ -170,10 +150,6 @@ void registerPaymentRoutes(crow::SimpleApp& app) {
         }
     });
 
-    // ========================================================
-    //  GET /customers/<id>/payments
-    //  Full payment history for one customer.
-    // ========================================================
     CROW_ROUTE(app, "/customers/<string>/payments").methods(crow::HTTPMethod::Get)
     ([](const crow::request& req, const string& customerId) {
 
