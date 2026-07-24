@@ -14,3 +14,13 @@ const double TIER4_RATE = 150.0;
 const std::string MPESA_PAYBILL_NUMBER = "000000";
 
 const std::string MPESA_TILL_NUMBER = "9461523";
+
+const std::string DARAJA_CONSUMER_KEY = "YOUR_CONSUMER_KEY";
+const std::string DARAJA_CONSUMER_SECRET = "YOUR_CONSUMER_SECRET";
+const std::string DARAJA_SHORTCODE = "YOUR_SHORTCODE"; // use paybill for the production.
+const std::string DARAJA_PASSKEY = "YOUR_PASSKEY";
+const std::string DARAJA_CALLBACK_URL = "https://yourngrok_url/api/payment/callback";
+
+// this the sandbox url for testing
+const std::string DARAJA_BASE_URL = "https://sandbox.safaricom.co.ke";
+// on production use this url https://api.safaricom.co.ke
