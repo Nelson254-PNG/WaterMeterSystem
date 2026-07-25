@@ -7,6 +7,7 @@
 #include "usage_routes.h"
 #include "billing_routes.h"
 #include "payment_routes.h"
+#include "mpesa_routes.h"
 #include <iostream>
 using namespace std;
 
@@ -23,6 +24,7 @@ int main() {
     registerUsageRoutes(app);
     registerBillingRoutes(app);
     registerPaymentRoutes(app);
+    registerMpesaRoutes(app);
 
     cout << "API server starting on http://localhost:8090\n";
     app.port(8090).run();
