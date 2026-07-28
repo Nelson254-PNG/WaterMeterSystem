@@ -9,3 +9,7 @@
 /WaterMeterSystem.exe
 /sql.pgsql
 /constants.h
+/uuid.pgsql
+/valve.pgsql
+/iot_simulator.cpp
+/iot_simulator.exe
